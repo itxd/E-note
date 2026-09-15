@@ -8,7 +8,9 @@ struct TodoListView: View {
     @State private var selectedTagID: UUID?
     @State private var showingTagFilter = false
     @State private var draft = ""
-    @State private var editing: TodoItem?
+    @State private var editing: TodoEditSession?
+    @State private var editingDate: TodoEditSession?
+    @State private var epoch = LocalProfile.epoch
     @FocusState private var composing: Bool
     var onClose: (() -> Void)? = nil
 
@@ -68,11 +70,19 @@ struct TodoListView: View {
                         .padding(.vertical, 24)
                     }
                     ForEach(filtered) { item in
-                        TodoRow(item: item, edit: { editing = item }, toggle: {
+                        let session = TodoEditSession(original: item, epoch: epoch)
+                        TodoRow(item: item, epoch: session.epoch, showQuickActions: filter < 2, edit: {
+                            editingDate = nil
+                            editing = session
+                        }, editDate: {
+                            editing = nil
+                            editingDate = session
+                        }, toggle: {
+                            guard session.epoch == LocalProfile.epoch else { return }
                             guard var current = store.todos().first(where: { $0.id == item.id }) else { return }
                             current.completed.toggle()
                             store.updateTodo(current)
-                        })
+                        }).id("\(epoch)-\(item.id)")
                     }
                 }
                 .padding(.horizontal, 14)
@@ -85,23 +95,17 @@ struct TodoListView: View {
         .onChange(of: boundTags.map { $0.id }) { ids in
             if let selected = selectedTagID, !ids.contains(selected) { selectedTagID = nil }
         }
-        .popover(item: $editing) { item in
-            TodoDetailsView(item: item) { updated in
-                // 详情编辑期间 API/其他窗口可能切换完成状态；保留最新状态。
-                if let current = store.todos().first(where: { $0.id == updated.id }) {
-                    var merged = updated
-                    merged.completed = current.completed
-                    merged.completedAt = current.completedAt
-                    merged.archivedAt = current.archivedAt
-                    merged.archiveRestoredAt = current.archiveRestoredAt
-                    merged.tagIDs = current.tagIDs
-                    store.updateTodo(merged)
-                }
-                editing = nil
-            } delete: {
-                store.deleteTodo(id: item.id)
-                editing = nil
+        .onReceive(store.$notes) { _ in
+            if epoch != LocalProfile.epoch {
+                editing = nil; editingDate = nil; selectedTagID = nil
+                showingTagFilter = false; draft = ""; epoch = LocalProfile.epoch
             }
+        }
+        .popover(item: $editing) { session in
+            TodoTitleEditor(session: session) { editing = nil }
+        }
+        .popover(item: $editingDate) { session in
+            TodoDateEditor(session: session) { editingDate = nil }
         }
     }
 
@@ -211,9 +215,14 @@ struct TodoRow: View {
     @ObservedObject private var store = NoteStore.shared
     @ObservedObject private var watcher = OverdueWatcher.shared
     let item: TodoItem
+    let epoch: UUID
+    let showQuickActions: Bool
     @State private var choosingTags = false
     @State private var inspectingTag: TodoTag?
+    @State private var confirmingDelete = false
+    @State private var errorMessage: String?
     let edit: () -> Void
+    let editDate: () -> Void
     let toggle: () -> Void
     private var dueSoon: Bool { watcher.upcomingTaskIDs.contains(item.id) }
     private var accent: Color { item.overdue ? .red : (dueSoon || item.priority == "high" ? .orange : TodoTheme.accent) }
@@ -254,6 +263,14 @@ struct TodoRow: View {
                 .font(.system(size: 9))
                 .foregroundColor(.secondary)
                 }
+                if showQuickActions {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(spacing: 10) { quickActions(compact: false) }
+                        HStack(spacing: 10) { quickActions(compact: true) }
+                    }
+                    .font(.system(size: 10))
+                    .padding(.vertical, 2)
+                }
                 ScrollView(.horizontal, showsIndicators: false) {
                     HStack(spacing: 6) {
                         ForEach(store.tags().filter { (item.tagIDs ?? []).contains($0.id) }) { tag in
@@ -282,51 +299,145 @@ struct TodoRow: View {
             }
             Spacer(minLength: 0)
             VStack(spacing: 6) {
-            Button { store.setTodoArchived(id: item.id, archived: !item.isArchived) } label: {
+            Button {
+                guard epoch == LocalProfile.epoch,
+                      let current = store.todo(identifier: item.id.uuidString) else { return }
+                store.setTodoArchived(id: item.id, archived: !current.isArchived)
+            } label: {
                 Image(systemName: item.isArchived ? "arrow.uturn.backward" : "archivebox")
                     .frame(width: 20, height: 20)
             }.buttonStyle(.plain).help(item.isArchived ? "恢复到列表（3 天后可再次自动归档）" : "归档任务")
             Button(action: edit) {
-                Image(systemName: "ellipsis").font(.system(size: 12, weight: .semibold))
+                Image(systemName: "pencil").font(.system(size: 12, weight: .semibold))
                     .frame(width: 20, height: 20)
             }
-            .buttonStyle(.plain).foregroundColor(.secondary).help("编辑优先级和到期时间")
+            .buttonStyle(.plain).foregroundColor(.secondary).help("修改待办标题").accessibilityLabel("修改待办标题：\(item.text)")
+            if item.canDelete {
+                Button { confirmingDelete = true } label: {
+                    Image(systemName: "trash").frame(width: 20, height: 20)
+                }.buttonStyle(.plain).foregroundColor(.red)
+                    .help("删除任务").accessibilityLabel("删除任务：\(item.text)")
+            }
             }
         }
         .padding(10)
         .background(TodoTheme.surface, in: RoundedRectangle(cornerRadius: 11))
         .overlay(RoundedRectangle(cornerRadius: 11).stroke(Color.primary.opacity(0.055), lineWidth: 1))
+        .confirmationDialog("删除 \(item.code)？", isPresented: $confirmingDelete) {
+            Button("删除任务", role: .destructive) {
+                if !store.deleteTodo(id: item.id, epoch: epoch) {
+                    errorMessage = "删除未成功。请确认任务仍为已完成或已归档、账号未切换，并检查数据保存状态。"
+                }
+            }
+            Button("取消", role: .cancel) {}
+        } message: { Text("删除后无法恢复。") }
+        .alert("操作未完成", isPresented: Binding(get: { errorMessage != nil }, set: { if !$0 { errorMessage = nil } })) {
+            Button("好") { errorMessage = nil }
+        } message: { Text(errorMessage ?? "") }
+    }
+
+    @ViewBuilder private func quickActions(compact: Bool) -> some View {
+        Button(action: editDate) {
+            Label(compact ? "时间" : "设置时间", systemImage: "calendar")
+                .fixedSize().padding(.vertical, 3).contentShape(Rectangle())
+        }.buttonStyle(.plain).foregroundColor(item.dueAt == nil ? .secondary : TodoTheme.accent)
+            .help("设置、修改或清除到期时间").accessibilityLabel("设置时间：\(item.text)")
+        Button {
+            do { try store.editTodo(id: item.id, epoch: epoch, change: .toggleImportance) }
+            catch { errorMessage = error.localizedDescription }
+        } label: {
+            Label(compact ? "重要" : (item.priority == "high" ? "取消重要" : "设为重要"), systemImage: item.priority == "high" ? "flag.fill" : "flag")
+                .fixedSize().padding(.vertical, 3).contentShape(Rectangle())
+        }.buttonStyle(.plain).foregroundColor(item.priority == "high" ? .orange : .secondary)
+            .help(item.priority == "high" ? "取消重要任务" : "设为重要任务")
+            .accessibilityLabel("\(item.priority == "high" ? "取消重要任务" : "设为重要任务")：\(item.text)")
     }
 }
 
-private struct TodoDetailsView: View {
-    @State var item: TodoItem
-    let save: (TodoItem) -> Void
-    let delete: () -> Void
+struct TodoTitleEditor: View {
+    let session: TodoEditSession
+    let close: () -> Void
+    @State private var text: String
+    @State private var errorMessage = ""
+
+    init(session: TodoEditSession, close: @escaping () -> Void) {
+        self.session = session; self.close = close
+        _text = State(initialValue: session.original.text)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
-            Text("编辑待办 · \(item.code)").font(.headline)
-            TextField("待办内容", text: $item.text, axis: .vertical).lineLimit(2...5)
-            Toggle("重要任务", isOn: Binding(get: { item.priority == "high" }, set: { item.priority = $0 ? "high" : "normal" }))
-            Toggle("设置到期时间", isOn: Binding(get: { item.dueAt != nil }, set: { item.dueAt = $0 ? Date().addingTimeInterval(3600) : nil }))
-            if item.dueAt != nil {
-                DatePicker("到期", selection: Binding(get: { item.dueAt ?? Date() }, set: { item.dueAt = $0 }))
-            }
+            Text("修改标题 · \(session.original.code)").font(.headline)
+            TextField("待办标题", text: $text, axis: .vertical).lineLimit(2...5)
+            if !errorMessage.isEmpty { Text(errorMessage).font(.caption).foregroundColor(.red) }
             HStack {
-                Button("删除任务", role: .destructive, action: delete)
+                Button("取消", action: close)
                 Spacer()
                 Button("保存") {
-                    item.text = item.text.trimmingCharacters(in: .whitespacesAndNewlines)
-                    save(item)
+                    do {
+                        try NoteStore.shared.editTodo(id: session.id, epoch: session.epoch,
+                                                      change: .title(text, replacing: session.original.text))
+                        close()
+                    } catch { errorMessage = error.localizedDescription }
                 }
-                .buttonStyle(.borderedProminent)
-                .disabled(item.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                .buttonStyle(TodoEditorButtonStyle(prominent: true))
+                .disabled(text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || text.count > 10000)
             }
         }
         .textFieldStyle(.roundedBorder)
+        .buttonStyle(TodoEditorButtonStyle())
         .tint(TodoTheme.accent)
         .padding(16)
         .frame(width: 300)
+    }
+}
+
+struct TodoDateEditor: View {
+    let session: TodoEditSession
+    let close: () -> Void
+    @State private var enabled: Bool
+    @State private var date: Date
+    @State private var errorMessage = ""
+
+    init(session: TodoEditSession, close: @escaping () -> Void) {
+        self.session = session; self.close = close
+        _enabled = State(initialValue: true)
+        _date = State(initialValue: session.original.dueAt ?? Date().addingTimeInterval(3600))
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("设置时间 · \(session.original.code)").font(.headline)
+            Toggle("设置到期时间", isOn: $enabled)
+            if enabled { DatePicker("到期", selection: $date, displayedComponents: [.date, .hourAndMinute]) }
+            if !errorMessage.isEmpty { Text(errorMessage).font(.caption).foregroundColor(.red) }
+            HStack {
+                Button("取消", action: close)
+                if session.original.dueAt != nil { Button("清除时间") { save(nil) } }
+                Spacer()
+                Button("保存") { save(enabled ? date : nil) }.buttonStyle(TodoEditorButtonStyle(prominent: true))
+            }
+        }.padding(16).frame(width: 300).tint(TodoTheme.accent).buttonStyle(TodoEditorButtonStyle())
+    }
+
+    private func save(_ value: Date?) {
+        do {
+            try NoteStore.shared.editTodo(id: session.id, epoch: session.epoch,
+                                          change: .dueDate(value, replacing: session.original.dueAt))
+            close()
+        } catch { errorMessage = error.localizedDescription }
+    }
+}
+
+private struct TodoEditorButtonStyle: ButtonStyle {
+    var prominent = false
+    @Environment(\.isEnabled) private var enabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label.font(.system(size: 12, weight: .medium))
+            .foregroundColor(prominent ? .white : .primary)
+            .padding(.horizontal, 12).padding(.vertical, 7)
+            .background(prominent ? TodoTheme.accent : TodoTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+            .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.45)
     }
 }

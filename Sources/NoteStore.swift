@@ -161,7 +161,43 @@ final class NoteStore: ObservableObject {
         if updated != existing { saveTodos(updated) }
     }
 
-    func deleteTodo(id: UUID) { saveTodos(todos().filter { $0.id != id }) }
+    func editTodo(id: UUID, epoch: UUID, change: TodoChange) throws {
+        guard epoch == LocalProfile.epoch else { throw APIError(409, "账号已切换，请重新打开任务") }
+        var items = todos()
+        guard let index = items.firstIndex(where: { $0.id == id }) else { throw APIError(404, "任务已不存在") }
+        switch change {
+        case .title(let text, let previous):
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty, trimmed.count <= 10000 else { throw APIError(400, "待办内容需为 1 至 10000 个字符") }
+            guard items[index].text == previous else { throw APIError(409, "标题已在其他位置修改，请重新打开后编辑") }
+            items[index].text = trimmed
+        case .dueDate(let date, let previous):
+            guard date?.timeIntervalSince1970.isFinite != false else { throw APIError(400, "到期时间无效") }
+            guard items[index].dueAt?.timeIntervalSince1970 == previous?.timeIntervalSince1970 else {
+                throw APIError(409, "到期时间已在其他位置修改，请重新打开后编辑")
+            }
+            items[index].dueAt = date
+        case .toggleImportance:
+            items[index].priority = items[index].priority == "high" ? "normal" : "high"
+        }
+        guard saveTodoMutation(items) else { throw APIError(500, "保存失败，请检查数据目录后重试") }
+    }
+
+    @discardableResult
+    func deleteTodo(id: UUID, epoch: UUID = LocalProfile.epoch) -> Bool {
+        guard epoch == LocalProfile.epoch else { return false }
+        let items = todos()
+        guard let item = items.first(where: { $0.id == id }), item.canDelete else { return false }
+        return saveTodoMutation(items.filter { $0.id != id })
+    }
+
+    private func saveTodoMutation(_ items: [TodoItem]) -> Bool {
+        guard canSave else { lastSaveSucceeded = false; return false }
+        let previous = notes
+        saveTodos(items)
+        if !lastSaveSucceeded { notes = previous }
+        return lastSaveSucceeded
+    }
     func archivedNotes() -> [NoteRecord] { notes.filter { $0.isArchived && $0.deletedAt == nil } }
     func deletedNotes() -> [NoteRecord] {
         notes.filter { $0.deletedAt != nil }.sorted { ($0.deletedAt ?? .distantPast) > ($1.deletedAt ?? .distantPast) }

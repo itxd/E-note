@@ -14,6 +14,7 @@ struct TodoItem: Codable, Identifiable, Equatable {
     var archivedAt: Date? = nil
     var archiveRestoredAt: Date? = nil
     var isArchived: Bool { archivedAt != nil }
+    var canDelete: Bool { completed || isArchived }
 
     mutating func normalizeCompletion(previous: TodoItem?, now: Date = Date()) {
         if completed {
@@ -38,4 +39,17 @@ struct TodoItem: Codable, Identifiable, Equatable {
     }
 
     var overdue: Bool { !completed && !isArchived && dueAt.map { $0 < Date() } == true }
+}
+
+/// A popover edits one field against the task and account it was opened from.
+struct TodoEditSession: Identifiable {
+    let original: TodoItem
+    let epoch: UUID
+    var id: UUID { original.id }
+}
+
+enum TodoChange {
+    case title(String, replacing: String)
+    case dueDate(Date?, replacing: Date?)
+    case toggleImportance
 }

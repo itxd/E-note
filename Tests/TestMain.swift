@@ -80,6 +80,7 @@ struct ENoteTests {
                 try rep.representation(using: .png, properties: [:])!.write(to: URL(fileURLWithPath: "build/todo-preview-\(dark ? "dark" : "light").png"))
                 window.orderOut(nil)
             }
+            try renderTodoControls()
             return
         }
 
@@ -208,7 +209,9 @@ struct ENoteTests {
         store.deleteTodo(id: item.id)
         assert(!store.todos().contains(where: { $0.id == item.id }))
         let last = store.addTodos([TodoItem(text: "待删除最高编号")])[0]
-        store.deleteTodo(id: last.id)
+        assert(!store.deleteTodo(id: last.id))
+        store.setTodoArchived(id: last.id, archived: true)
+        assert(store.deleteTodo(id: last.id))
         let next = store.addTodos([TodoItem(text: "删除后不复用编号")])[0]
         assert(next.number! > last.number!)
         // 模拟前一个版本：有 UUID 但无编号，下一次启动应迁移且不丢任务。
