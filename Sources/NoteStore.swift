@@ -144,6 +144,45 @@ final class NoteStore: ObservableObject {
         save()
     }
 
+    func deleteTag(id: UUID) throws {
+        guard tags().contains(where: { $0.id == id }) else { throw APIError(404, "标签不存在") }
+        guard !todos().contains(where: { ($0.tagIDs ?? []).contains(id) }) else { throw APIError(409, "请先解除待办的标签绑定") }
+        guard canSave, let i = notes.firstIndex(where: { $0.isTodoList }) else { throw APIError(500, "无法保存") }
+        let data = try JSONEncoder().encode(tags().filter { $0.id != id })
+        let previous = notes
+        notes[i].tagData = crypto.seal(String(decoding: data, as: UTF8.self))
+        save()
+        if !lastSaveSucceeded { notes = previous; throw APIError(500, "保存失败") }
+    }
+
+    func mutateAPINote(id: UUID, body: String? = nil, title: String? = nil,
+                       pinned: Bool? = nil, archived: Bool? = nil, action: String = "update") throws -> NoteRecord {
+        EditorRegistry.shared.editor(for: id)?.saveNow()
+        guard canSave else { throw APIError(500, "无法保存") }
+        guard let i = notes.firstIndex(where: { $0.id == id && !$0.isTodoList }) else { throw APIError(404, "便签不存在") }
+        var note = notes[i]
+        guard action != "update" || note.deletedAt == nil else { throw APIError(409, "请先恢复已删除便签") }
+        if body != nil || title != nil {
+            var content = body ?? self.body(of: note)
+            if let title = title {
+                let lines = content.split(separator: "\n", maxSplits: 1, omittingEmptySubsequences: false)
+                content = title + (lines.count > 1 ? "\n" + lines[1] : "")
+            }
+            note.body = crypto.seal(content)
+            note.title = deriveTitle(from: content)
+        }
+        if let pinned = pinned { note.isPinned = pinned }
+        if let archived = archived { note.isArchived = archived }
+        if action == "delete" { note.deletedAt = note.deletedAt ?? Date() }
+        if action == "restore" { note.deletedAt = nil }
+        note.modifiedAt = Date()
+        let previous = notes
+        notes[i] = note
+        save()
+        if !lastSaveSucceeded { notes = previous; throw APIError(500, "保存失败") }
+        return note
+    }
+
     func setTodoArchived(id: UUID, archived: Bool, now: Date = Date()) {
         guard var item = todos().first(where: { $0.id == id }) else { return }
         item.archivedAt = archived ? now : nil

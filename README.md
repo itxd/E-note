@@ -499,3 +499,7 @@ LOGO 以蓝色 E 字母结合叠层便签，源文件为 `assets/make_icon.swift
 
 
 当前已验证范围和待接入项见 [验证记录](docs/VALIDATION.md)。
+
+## AI / MCP 接入
+
+支持 AI 查询和操作便签、待办与标签，提供 19 个本机工具。参见 [MCP 安装和使用](docs/MCP.md)。

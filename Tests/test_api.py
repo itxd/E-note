@@ -59,6 +59,48 @@ with tempfile.TemporaryDirectory(prefix='enote-tests-') as directory:
         assert (data / 'api.json').stat().st_mode & 0o777 == 0o600
         assert (data / 'api-token').stat().st_mode & 0o777 == 0o600
         assert request('GET', '/v1/health')[0] == 200
+        # Exercise real MCP STDIO -> authenticated native API, with isolated data.
+        import sys
+        mcp = subprocess.Popen([sys.executable, str(ROOT / 'skills/e-note/scripts/e_note_mcp.py'),
+                                '--config', str(data / 'api.json')], stdin=subprocess.PIPE,
+                               stdout=subprocess.PIPE, text=True)
+        def call(name, arguments=None, error=False):
+            mcp.stdin.write(json.dumps({'jsonrpc': '2.0', 'id': 1, 'method': 'tools/call',
+                'params': {'name': 'enote_' + name, 'arguments': arguments or {}}}) + '\n')
+            mcp.stdin.flush()
+            result = json.loads(mcp.stdout.readline())['result']
+            assert result['isError'] == error, result
+            return result.get('structuredContent')
+        try:
+            assert call('health')['apiVersion'] == 2
+            note = call('create_note', {'title': 'MCP 标题', 'body': '保留正文'})['note']
+            nid = note['id']
+            updated = call('update_note', {'id': nid, 'title': '新标题', 'isPinned': True})['note']
+            assert updated['body'] == '新标题\n保留正文' and updated['isPinned']
+            call('update_note', {'id': nid, 'isArchived': True})
+            assert nid in [n['id'] for n in call('list_notes', {'state': 'archived'})['notes']]
+            call('delete_note', {'id': nid})
+            assert call('get_note', {'id': nid})['note']['deletedAt']
+            call('update_note', {'id': nid, 'body': 'blocked'}, error=True)
+            call('restore_note', {'id': nid})
+            assert call('get_note', {'id': nid})['note']['deletedAt'] is None
+            tag = call('create_tag', {'name': 'MCP 标签'})['tag']
+            tid = tag['id']
+            todo = call('create_todo', {'text': 'MCP 待办', 'tagIDs': [tid]})['items'][0]
+            ident = {'id': todo['code']}
+            assert call('get_todo', ident)['item']['tagIDs'] == [tid]
+            call('delete_tag', {'id': tid}, error=True)
+            call('delete_todo', ident, error=True)
+            call('update_todo', dict(ident, archived=True))
+            call('delete_todo', ident)
+            call('get_todo', ident, error=True)
+            call('delete_tag', {'id': tid})
+            call('get_tag', {'id': tid}, error=True)
+            call('get_note', {'id': '../todos'}, error=True)
+            print('PASS: MCP real API note lifecycle, tag binding and protected todo deletion')
+        finally:
+            mcp.stdin.close()
+            mcp.wait(timeout=5)
         migrated = request('GET', '/v1/todos')[1]['items']
         assert all(item['number'] > 0 and item['code'].startswith('T') for item in migrated)
         assert len({item['number'] for item in migrated}) == len(migrated)

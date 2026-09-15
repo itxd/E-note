@@ -54,8 +54,28 @@ TOOLS = [
     tool('enote_create_todo', '按用户要求添加一条独立 TODO；超时后先查询，不自动重复创建。', TODO_FIELDS, ['text']),
     tool('enote_update_todo', '按已有编号或 UUID 修改 TODO。先核对目标；关联执行任务需用户验收后才能完成。',
          dict(TODO_FIELDS, id={'type': 'string', 'description': 'T000001、数字编号或 UUID'},
-              completed={'type': 'boolean'}), ['id']),
+              completed={'type': 'boolean'}, archived={'type': 'boolean'}), ['id']),
 ]
+
+
+NOTE_FIELDS = {'title': {'type': 'string', 'minLength': 1, 'maxLength': 40},
+               'body': {'type': 'string', 'minLength': 1, 'maxLength': 200000},
+               'isPinned': {'type': 'boolean'}, 'isArchived': {'type': 'boolean'}}
+TOOLS += [
+    tool('enote_get_note', '按 UUID 读取普通便签。', {'id': TEXT}, ['id'], True),
+    tool('enote_update_note', '修改便签；body 包含首行标题，title 替换首行。先读取目标。', dict(NOTE_FIELDS, id=TEXT), ['id']),
+    tool('enote_delete_note', '将普通便签移到回收站，可恢复。', {'id': TEXT}, ['id']),
+    tool('enote_restore_note', '从回收站恢复便签。', {'id': TEXT}, ['id']),
+    tool('enote_get_todo', '按 T 编号或 UUID 读取待办。', {'id': TEXT}, ['id'], True),
+    tool('enote_delete_todo', '永久删除已完成或已归档待办；未完成待办不可删除。', {'id': TEXT}, ['id']),
+    tool('enote_delete_tag', '删除标签；必须先解除所有待办的绑定。', {'id': TEXT}, ['id']),
+]
+for spec in TOOLS:
+    spec['annotations']['destructiveHint'] = any(word in spec['name'] for word in ('update', 'delete'))
+    if spec['name'] == 'enote_list_notes':
+        spec['inputSchema']['properties'] = {'state': {'type': 'string', 'enum': ['active', 'archived', 'deleted', 'all']}}
+    if spec['name'] == 'enote_create_note':
+        spec['inputSchema']['properties'] = {key: NOTE_FIELDS[key] for key in ('title', 'body')}
 
 
 def validate(arguments, schema):
@@ -73,7 +93,7 @@ def validate(arguments, schema):
             raise ValueError('参数类型或取值不正确：' + key)
         if isinstance(value, list) and (len(value) > field.get('maxItems', 100) or not all(isinstance(v, str) for v in value)):
             raise ValueError('数组参数无效：' + key)
-        if isinstance(value, str) and len(value) < field.get('minLength', 0):
+        if isinstance(value, str) and (len(value.strip()) < field.get('minLength', 0) or len(value) > field.get('maxLength', 200000)):
             raise ValueError('参数不能为空：' + key)
 
 
@@ -82,6 +102,33 @@ def invoke(name, arguments, config):
     if spec is None:
         raise ValueError('未知 E note 工具')
     validate(arguments, spec['inputSchema'])
+    if name == 'enote_list_notes':
+        state = arguments.get('state', 'active')
+        result = api_request(config, 'GET', '/v1/notes/all')
+        result['notes'] = [note for note in result['notes'] if note.get('kind') == 'note' and (
+            state == 'all' or
+            (state == 'deleted' and note.get('deletedAt') is not None) or
+            (state == 'archived' and note.get('isArchived') and note.get('deletedAt') is None) or
+            (state == 'active' and not note.get('isArchived') and note.get('deletedAt') is None))]
+        return result
+    operations = {
+        'enote_get_note': ('GET', 'notes'), 'enote_update_note': ('PATCH', 'notes'),
+        'enote_delete_note': ('DELETE', 'notes'), 'enote_restore_note': ('POST', 'notes'),
+        'enote_get_todo': ('GET', 'todos'), 'enote_delete_todo': ('DELETE', 'todos'),
+        'enote_delete_tag': ('DELETE', 'tags'),
+    }
+    if name in operations:
+        method, resource = operations[name]
+        payload = dict(arguments)
+        identifier = payload.pop('id').upper()
+        if resource != 'todos' or not re.fullmatch(r'T?[0-9]+', identifier):
+            identifier = str(UUID(identifier)).upper()
+        if method == 'PATCH' and not payload:
+            raise ValueError('至少提供一个修改字段')
+        path = '/v1/' + resource + '/' + identifier
+        if name == 'enote_restore_note':
+            path += '/restore'
+        return api_request(config, method, path, payload if method in ('PATCH', 'POST') else None)
     reads = {'enote_list_tags': '/v1/tags', 'enote_health': '/v1/health', 'enote_list_todos': '/v1/todos',
              'enote_list_notes': '/v1/notes', 'enote_sync_status': '/v1/sync/status'}
     if name in reads:
@@ -121,9 +168,9 @@ def dispatch(message, config):
         return response
     if method == 'initialize':
         requested = params.get('protocolVersion')
-        version = requested if requested in ('2024-11-05', '2025-03-26', '2025-06-18') else '2024-11-05'
+        version = requested if requested in ('2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25') else '2024-11-05'
         response['result'] = {'protocolVersion': version, 'capabilities': {'tools': {}},
-                              'serverInfo': {'name': 'e-note', 'version': '1.0.0'},
+                              'serverInfo': {'name': 'e-note', 'version': '1.1.0'},
                               'instructions': '操作 E note 优先使用这些专用工具，无需在 shell 中连接本地 HTTP。仅按用户要求修改记录。'}
     elif method == 'ping':
         response['result'] = {}
@@ -132,10 +179,10 @@ def dispatch(message, config):
     elif method == 'tools/call':
         try:
             result = invoke(params.get('name'), params.get('arguments', {}), config)
-            response['result'] = {'content': [{'type': 'text', 'text': json.dumps(result, ensure_ascii=False)}], 'isError': False}
+            response['result'] = {'content': [{'type': 'text', 'text': json.dumps(result, ensure_ascii=False)}], 'isError': False, 'structuredContent': result}
         except urllib.error.HTTPError as error:
             # Never forward arbitrary HTTP bodies or headers (which can contain credentials).
-            response['result'] = failure('E note API 返回 HTTP ' + str(error.code) + '；请检查 API 设置及操作参数。')
+            response['result'] = failure('E note API 返回 HTTP ' + str(error.code) + ('；目标受保护：待办需已完成或归档，标签需解除绑定，已删除便签需先恢复。' if error.code == 409 else '；请检查目标、参数及 API 设置；新增工具需要新版 E note。'))
         except (OSError, ValueError, KeyError, TypeError) as error:
             message = ('E note 参数或配置不正确。' if isinstance(error, (ValueError, KeyError, TypeError))
                        else '无法连接 E note；请确认应用已运行并开启本地 API。')

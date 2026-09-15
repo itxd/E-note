@@ -263,9 +263,49 @@ private final class APIConnection {
 enum LocalAPIRouter {
     static func handle(_ method: String, _ path: String, _ data: Data) throws -> (Int, Any) {
         let store = NoteStore.shared
-        if method == "GET", path == "/v1/health" { return (200, ["app": "E note", "apiVersion": 1]) }
+        if method == "GET", path == "/v1/health" { return (200, ["app": "E note", "apiVersion": 2]) }
         if method == "GET", path == "/v1/notes" {
             return (200, ["notes": store.libraryNotes().map(noteJSON)])
+        }
+        if method == "GET", path == "/v1/notes/all" {
+            return (200, ["notes": store.notes.filter { !$0.isTodoList }.map(noteJSON)])
+        }
+        if path.hasPrefix("/v1/notes/") {
+            let parts = path.dropFirst("/v1/notes/".count).split(separator: "/")
+            guard let first = parts.first, let id = UUID(uuidString: String(first)),
+                  let note = store.note(id: id), !note.isTodoList else { throw APIError(404, "便签不存在") }
+            if method == "GET", parts.count == 1 { return (200, ["note": noteJSON(note)]) }
+            if method == "DELETE", parts.count == 1 {
+                return (200, ["note": noteJSON(try store.mutateAPINote(id: id, action: "delete"))])
+            }
+            if method == "POST", parts.count == 2, parts[1] == "restore" {
+                return (200, ["note": noteJSON(try store.mutateAPINote(id: id, action: "restore"))])
+            }
+            if method == "PATCH", parts.count == 1 {
+                let json = try object(data)
+                guard !json.isEmpty, Set(json.keys).isSubset(of: ["body", "title", "isPinned", "isArchived"]) else { throw APIError(400, "修改字段无效") }
+                func boolean(_ key: String) throws -> Bool? {
+                    guard let value = json[key] else { return nil }
+                    guard let number = value as? NSNumber, CFGetTypeID(number) == CFBooleanGetTypeID() else { throw APIError(400, "需要布尔值") }
+                    return number.boolValue
+                }
+                let body = try json["body"].map { try text($0, name: "body", max: 200000) }
+                let title = try json["title"].map { try text($0, name: "title", max: 40) }
+                let updated = try store.mutateAPINote(id: id, body: body, title: title,
+                    pinned: boolean("isPinned"), archived: boolean("isArchived"))
+                return (200, ["note": noteJSON(updated)])
+            }
+        }
+        if method == "DELETE", path.hasPrefix("/v1/tags/") {
+            guard let id = UUID(uuidString: String(path.dropFirst("/v1/tags/".count))) else { throw APIError(400, "标签 ID 无效") }
+            try store.deleteTag(id: id)
+            return (200, ["deleted": true])
+        }
+        if method == "DELETE", path.hasPrefix("/v1/todos/") {
+            guard let item = store.todo(identifier: String(path.dropFirst("/v1/todos/".count))) else { throw APIError(404, "待办不存在") }
+            guard item.canDelete else { throw APIError(409, "只能删除已完成或已归档的待办") }
+            guard store.deleteTodo(id: item.id) else { throw APIError(500, "删除失败") }
+            return (200, ["deleted": true])
         }
         if method == "GET", path == "/v1/tags" {
             return (200, ["tags": store.tags().map(tagJSON)])
@@ -411,6 +451,7 @@ enum LocalAPIRouter {
 
     static func noteJSON(_ note: NoteRecord) -> [String: Any] {
         ["id": note.id.uuidString, "title": note.title, "body": NoteStore.shared.body(of: note),
+         "isArchived": note.isArchived, "deletedAt": note.deletedAt.map { ISO8601DateFormatter().string(from: $0) } as Any? ?? NSNull(),
          "kind": note.isTodoList ? "todoList" : "note", "isPinned": note.isPinned,
          "linkedTodoID": note.linkedTodoID?.uuidString as Any? ?? NSNull(),
          "workflowID": note.workflowID?.uuidString as Any? ?? NSNull()]

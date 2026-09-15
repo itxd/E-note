@@ -156,3 +156,17 @@ python3 skills/e-note/scripts/e_note.py update --id T000008 --tag-id '<标签 UU
 ```
 
 MCP 提供 `enote_list_tags`、`enote_get_tag`、`enote_create_tag`、`enote_update_tag`；`enote_create_todo` 和 `enote_update_todo` 支持 `tagIDs` 数组。更新已有 MCP 进程后需重新连接，才能发现新工具。
+
+## 本地 API v2：便签与删除操作
+
+`GET /v1/health` 的 `apiVersion` 为 2。原有接口保持兼容。
+
+- `GET /v1/notes/all`：全部普通便签（含归档、回收站）。
+- `GET /v1/notes/{UUID}`：读取普通便签。
+- `PATCH /v1/notes/{UUID}`：修改 `body`、`title`、`isPinned`、`isArchived`，至少一个字段。`body` 包含首行标题，`title` 替换首行；单次原子保存。
+- `DELETE /v1/notes/{UUID}`：移入回收站。
+- `POST /v1/notes/{UUID}/restore`：恢复，JSON 请求体 `{}`。
+- `DELETE /v1/todos/{UUID或编号}`：仅已完成或已归档项可删除，否则 409。
+- `DELETE /v1/tags/{UUID}`：标签被任意待办绑定时返回 409，先 PATCH 待办的 `tagIDs` 解除绑定。
+
+普通便签返回值新增 `isArchived`、`deletedAt`。编辑回收站便签返回 409，需先恢复；待办清单不能通过普通便签接口修改或删除。MCP 接入见 [MCP.md](MCP.md)。
