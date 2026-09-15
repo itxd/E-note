@@ -48,5 +48,29 @@ func runTodoFeatureTests() throws {
     store.setTodoArchived(id: created.id, archived: false)
     store.maintainTodoArchives()
     assert(!store.todo(identifier: created.id.uuidString)!.isArchived)
+    assert(store.todoList?.title == "待办清单")
+    let profile = LocalProfile.current
+    let enabled = AppSettings.shared.todoListEnabled
+    let legacyProfile = LocalProfile.key(server: "test-title-migration", account: UUID().uuidString)
+    let directory = LocalProfile.directory(legacyProfile)
+    try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+    var legacyNotes = store.notes
+    let index = legacyNotes.firstIndex { $0.isTodoList }!
+    legacyNotes[index].title = "TODOList"
+    let legacyList = legacyNotes[index]
+    let encoder = JSONEncoder(); encoder.dateEncodingStrategy = .iso8601
+    let legacyData = try encoder.encode(legacyNotes)
+    assert(NoteStoreIO.atomicWrite(legacyData, to: directory.appendingPathComponent("notes.json")))
+    AppSettings.shared.todoListEnabled = false
+    try store.switchProfile(to: legacyProfile, importing: false)
+    let migrated = store.todoList!
+    assert(migrated.title == "待办清单" && migrated.id == legacyList.id)
+    assert(migrated.todoData == legacyList.todoData && migrated.tagData == legacyList.tagData)
+    assert(migrated.todoSequence == legacyList.todoSequence && migrated.kind == "todoList")
+    assert(!AppSettings.shared.todoListEnabled)
+    assert(NoteStoreIO.load().first { $0.isTodoList }?.title == "待办清单")
+    try store.switchProfile(to: profile, importing: false)
+    AppSettings.shared.todoListEnabled = enabled
+    print("PASS: legacy TODOList title migrates without changing tasks, tags, IDs or visibility")
     print("PASS: legacy decoding, archive boundary, completion transitions, restore and tag cloud round-trip")
 }

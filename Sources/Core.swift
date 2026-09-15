@@ -319,6 +319,8 @@ enum TaskSyntax {
 // MARK: - 便签模型
 
 struct NoteRecord: Codable, Identifiable, Hashable {
+    static let todoListTitle = "待办清单"
+
     var id: UUID
     var title: String
     var colorName: String

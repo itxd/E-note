@@ -150,7 +150,7 @@ struct TodoListView: View {
             .frame(width: 34, height: 34)
             .accessibilityLabel("已完成 \(done) 项，共 \(items.count) 项")
             VStack(alignment: .leading, spacing: 2) {
-                Text("TODOList").font(.system(size: 17, weight: .bold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.7)
+                Text(NoteRecord.todoListTitle).font(.system(size: 17, weight: .bold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.7)
                 Text(items.isEmpty ? "每一件小事，都算数" : "已完成 \(done) / \(items.count)")
                     .font(.system(size: 10)).foregroundColor(.secondary)
             }
@@ -165,7 +165,7 @@ struct TodoListView: View {
                 Button(action: onClose) { Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)) }
                     .buttonStyle(.plain)
                     .foregroundColor(.secondary)
-                    .help("收起 TODOList")
+                    .help("收起待办清单")
             }
         }
         .padding(14)

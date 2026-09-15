@@ -48,10 +48,17 @@ final class NoteStore: ObservableObject {
     var todoList: NoteRecord? { notes.first { $0.isTodoList } }
 
     func ensureTodoList() {
-        guard AppSettings.shared.todoListEnabled, todoList == nil else { return }
+        if let index = notes.firstIndex(where: { $0.isTodoList }) {
+            if notes[index].title != NoteRecord.todoListTitle {
+                notes[index].title = NoteRecord.todoListTitle
+                save()
+            }
+            return
+        }
+        guard AppSettings.shared.todoListEnabled else { return }
         var note = NoteRecord.make(colorName: NoteColor.todo.name)
         note.kind = "todoList"
-        note.title = "TODOList"
+        note.title = NoteRecord.todoListTitle
         note.isPinned = true
         notes.insert(note, at: 0)
         save()
@@ -75,7 +82,7 @@ final class NoteStore: ObservableObject {
         if todoList == nil {
             var note = NoteRecord.make(colorName: NoteColor.todo.name)
             note.kind = "todoList"
-            note.title = "TODOList"
+            note.title = NoteRecord.todoListTitle
             note.isPinned = true
             notes.insert(note, at: 0)
         }
@@ -407,7 +414,7 @@ final class NoteStore: ObservableObject {
         let order = Dictionary(uniqueKeysWithValues: notes.enumerated().map { ($0.element.id, $0.offset) })
         next.sort { (order[$0.id] ?? Int.max, -$0.createdAt.timeIntervalSince1970) < (order[$1.id] ?? Int.max, -$1.createdAt.timeIntervalSince1970) }
         var todoNote = todoList ?? NoteRecord.make(colorName: NoteColor.todo.name)
-        todoNote.kind = "todoList"; todoNote.title = "TODOList"; todoNote.isPinned = true
+        todoNote.kind = "todoList"; todoNote.title = NoteRecord.todoListTitle; todoNote.isPinned = true
         // Unsynced local tasks keep distinct temporary numbers until the server assigns canonical ones.
         var used = Set<Int>()
         var sequence = max(todoNote.todoSequence ?? 0, tasks.compactMap { $0.number }.max() ?? 0)

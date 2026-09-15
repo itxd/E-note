@@ -118,8 +118,8 @@ struct SettingsView: View {
                 Toggle("静止时完全隐藏 Deck(pill 位置仍可唤醒)", isOn: $settings.hideDeck)
                 Toggle("悬停在标签上直接打开便签", isOn: $settings.openOnHover)
             }
-            GroupBox("TODOList") {
-                Toggle("常驻 TODOList（固定在顶部）", isOn: $settings.todoListEnabled)
+            GroupBox(NoteRecord.todoListTitle) {
+                Toggle("常驻待办清单（固定在顶部）", isOn: $settings.todoListEnabled)
                 Toggle("临近到期时探出标签提醒", isOn: $settings.todoReminderEnabled)
                 Picker("提前提醒", selection: $settings.todoReminderMinutes) {
                     ForEach([1, 5, 10, 15, 30, 60, 120], id: \.self) { minutes in
