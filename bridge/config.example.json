@@ -1,0 +1,12 @@
+{
+  "appID": "",
+  "appSecret": "",
+  "allowedUsers": ["ou_REPLACE_WITH_YOUR_OPEN_ID"],
+  "accountID": "REPLACE_WITH_ENOTE_ACCOUNT_UUID",
+  "provider": "codex",
+  "command": "/usr/local/bin/codex",
+  "workspaces": ["/absolute/path/to/your/project"],
+  "executionTimeoutSeconds": 3600,
+  "apiConfig": "~/Library/Application Support/ENote/api.json",
+  "dataDirectory": "~/Library/Application Support/ENote/bridge"
+}

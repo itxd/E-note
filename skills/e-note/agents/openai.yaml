@@ -1,0 +1,4 @@
+interface:
+  display_name: "E note 便签与待办"
+  short_description: "向本机 E note 创建便签、添加分类待办，并按固定编号修改内容与完成状态"
+  default_prompt: "使用 $e-note 把这件事加入 E note 的 TODOList。"

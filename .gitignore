@@ -1,0 +1,57 @@
+# 构建产物与本机缓存
+build/
+.build/
+DerivedData/
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+.pytest_cache/
+.DS_Store
+xcuserdata/
+*.xcuserstate
+
+# SSH、私钥和本机环境配置（保留可提交的示例配置）
+.ssh
+.env
+.env.*
+!.env.example
+!.env.sample
+!.env.template
+*.key
+*.pem
+*.p12
+*.pfx
+id_rsa
+id_ed25519
+id_ecdsa
+id_dsa
+bridge.json
+server-setup.json
+api.json
+api-token
+
+# 便签、账号、同步状态与运行数据库
+notes.json
+accounts/
+active-profile
+device-id
+cloud-state.enc
+sync-journal.enc
+*.sqlite3
+*.sqlite3-wal
+*.sqlite3-shm
+*.sqlite3-journal
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
+
+# 本机日志、执行记录与备份
+*.log
+events.jsonl
+backups/
+*.backup
+*.migration-backup/

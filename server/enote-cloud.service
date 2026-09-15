@@ -1,0 +1,27 @@
+[Unit]
+Description=E note encrypted cloud sync and execution coordination
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=enote
+Group=enote
+WorkingDirectory=/opt/enote
+EnvironmentFile=/etc/enote/cloud.env
+ExecStart=/usr/bin/python3 /opt/enote/enote_server.py --data /var/lib/enote --host 0.0.0.0 --port 8443 --cert /etc/enote/server.crt --key /etc/enote/server.key
+Restart=on-failure
+RestartSec=5
+UMask=0077
+NoNewPrivileges=true
+ProtectSystem=strict
+ProtectHome=true
+PrivateTmp=true
+ReadWritePaths=/var/lib/enote
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+LimitNOFILE=1024
+TasksMax=128
+MemoryMax=512M
+
+[Install]
+WantedBy=multi-user.target
