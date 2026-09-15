@@ -49,6 +49,16 @@ TODOList 使用独立的松柏绿主题，普通便签默认交替使用杏砂�
 
 ## 快速开始
 
+### 直接下载安装（无需编程环境）
+
+**[下载 macOS 安装包](https://github.com/itxd/E-note/releases/latest/download/E-note-macOS-universal.dmg)** · [所有版本](https://github.com/itxd/E-note/releases) · [完整安装说明](docs/INSTALL.txt)
+
+适用于 **macOS 13+，Intel 和 Apple 芯片**。打开 DMG，将 **E note** 拖入 **Applications（应用程序）**，再从应用程序文件夹启动。把鼠标移到屏幕边缘的小条即可使用；应用不显示 Dock 图标，无需登录即可管理本机便签和待办。
+
+当前下载版采用临时签名，尚未经过 Apple Developer ID 签名和公证。首次打开若提示无法验证开发者，确认来源可信后，在「系统设置 → 隐私与安全性」中选择「仍要打开」。详见 [Apple 官方说明](https://support.apple.com/zh-cn/102445)。
+
+### 从源码构建
+
 需要 macOS 13 或更高版本，以及 Xcode Command Line Tools。Python 客户端、Skill 安装脚本和测试需要 Python 3，客户端只使用标准库。
 
 在项目目录执行：
@@ -70,9 +80,11 @@ TODOList 使用独立的松柏绿主题，普通便签默认交替使用杏砂�
 ```bash
 ./build.sh        # release：编译、组装 .app、ad-hoc 签名与验证
 ./build.sh debug  # 调试构建
+./build.sh universal  # 同时包含 Intel 与 Apple 芯片
+./scripts/package_release.sh  # 生成 DMG、ZIP 和 SHA-256 校验文件
 ```
 
-构建脚本按当前机器架构生成单架构应用，最低部署目标为 macOS 13。无需 Xcode 工程或额外包管理器。
+默认按当前机器架构生成单架构应用，发布脚本生成双架构应用，最低部署目标为 macOS 13。无需 Xcode 工程或额外包管理器。
 
 ## 账号与多端同步
 
@@ -469,6 +481,12 @@ LOGO 以蓝色 E 字母结合叠层便签，源文件为 `assets/make_icon.swift
 屏幕边缘便签的交互参考开源项目 [aimen08/noty](https://github.com/aimen08/noty)。本项目面向 macOS 13，使用 Swift 直接编译。
 
 当前使用自建云端同步，不接入 Apple iCloud。Markdown 即时渲染、图片粘贴和 Sparkle 自动更新尚未提供。飞书正式收发需要配置自己的应用机器人，电脑执行需要应用和桥接保持运行。
+
+## 开源许可
+
+本项目采用 [MIT License](LICENSE)，允许使用、修改、分发和商业使用，分发时需保留版权声明及许可文本。软件按现状提供，不附带担保。
+
+许可文件保留本项目作者韦冬及参考项目 [aimen08/noty](https://github.com/aimen08/noty/blob/main/LICENSE) 原作者 Aymen Hamza 的版权署名；第三方依赖遵循各自的许可证。
 
 
 当前已验证范围和待接入项见 [验证记录](docs/VALIDATION.md)。

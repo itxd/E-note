@@ -1,5 +1,17 @@
 # 当前验证记录
 
+## v1.0 下载包发布验证（2026-09-15）
+
+- `./scripts/package_release.sh` 通过：生成包含 `x86_64` 和 `arm64` 的 App、DMG、ZIP、安装说明和 SHA-256 校验文件。
+- DMG 校验、只读挂载检查、包内 `codesign --verify --deep --strict` 和 ZIP 完整性检查通过；安装盘包含指向 `/Applications` 的快捷方式和 MIT 许可。
+- 从 DMG 复制 App 到隔离目录，在 Intel Mac 上使用独立数据目录、偏好域和端口启动，真实 `/v1/health` 返回 200。Apple 芯片版本已交叉编译，尚未在 Apple 芯片实机运行。
+- `./Tests/run.sh`、`Tests/test_cloud.py`（7 项）、`Tests/test_sync.py`、`Tests/test_storage_failure.py`、`Tests/test_bridge_runner.py`（5 项）、`Tests/test_mcp.py`（7 项）全部通过。
+- 修正两处测试不稳定因素：标签时间戳在 Unix / Foundation 时间基准转换后按微秒容差比较；续期失败测试等待子进程初始化后再触发终止。
+- 候选源码基础凭据扫描仅命中测试密码；`.ssh`、私钥、令牌和运行数据不在 Git 跟踪列表。
+- 当前使用 ad-hoc 临时签名，没有 Apple Developer ID 签名或公证；首次打开说明随下载包提供。本轮未重新执行生产服务器测试或飞书手机端全流程验收。
+
+## 既有验证记录
+
 验证环境：macOS Intel 原生 Swift 应用；云端 Ubuntu 26.04 / Python 3 / SQLite；2026-09-14。
 
 | 验证 | 当前证据 |
