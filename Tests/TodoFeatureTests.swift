@@ -37,7 +37,12 @@ func runTodoFeatureTests() throws {
     let entities = store.cloudEntities()
     assert(entities.contains { $0.id == tag.id.uuidString && $0.kind == "tag" })
     try store.applyCloud(entities)
-    assert(store.tags().contains(tag))
+    var restoredTag = store.tags().first { $0.id == tag.id }!
+    // Unix timestamps and Foundation's reference date can differ by a fraction
+    // of a microsecond after conversion. Verify time and content separately.
+    assert(abs(restoredTag.modifiedAt!.timeIntervalSince(tag.modifiedAt!)) < 0.000001)
+    restoredTag.modifiedAt = tag.modifiedAt
+    assert(restoredTag == tag)
     assert(store.todo(identifier: created.id.uuidString)!.tagIDs == [tag.id])
     assert(store.todo(identifier: created.id.uuidString)!.isArchived)
     store.setTodoArchived(id: created.id, archived: false)

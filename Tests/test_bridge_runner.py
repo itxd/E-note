@@ -62,7 +62,14 @@ else:
         finally: release.set()
 
     def test_failed_renewal_stops_process(self):
-        def heartbeat(): raise bridge.BridgeError('owner changed')
+        # Test termination of a running child, independently of Python startup
+        # speed. The watchdog timeout itself is covered by the hung-renewal test.
+        self.runner.lease_silence_limit=2
+        def heartbeat():
+            deadline=time.monotonic()+1
+            while not (self.root/'pid').exists() and time.monotonic()<deadline:
+                time.sleep(.01)
+            raise bridge.BridgeError('owner changed')
         with self.assertRaisesRegex(bridge.BridgeError,'owner changed'):
             self.runner.run('hang',self.root,'execution','rejected-renewal',heartbeat)
         self.assert_stopped()
