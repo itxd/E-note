@@ -47,6 +47,24 @@ class CloudTests(unittest.TestCase):
     def action(self,f,action,**extra):
         return self.call('/v1/workflows/'+f['id']+'/'+action,dict(cursor=self.snapshot()['cursor'],**extra))['workflow']
 
+    def test_workflow_reuses_linked_note_and_task_number(self):
+        t = self.todo()
+        snap = self.call('/v1/sync', dict(changes=[t]))
+        note = dict(id=uid(), kind='note', baseRevision=0, deleted=False,
+                    payload=dict(title='已有便签', body='保留用户正文', isArchived=True, isPinned=False,
+                                 createdAt=time.time(), modifiedAt=time.time(), linkedTodoID=t['id']))
+        snap = self.call('/v1/sync', dict(changes=[note]))
+        first = self.call('/v1/workflows', dict(cursor=snap['cursor'], todoID=t['id']))
+        self.assertEqual(first['workflow']['noteID'], note['id'])
+        saved = next(n for n in first['snapshot']['entities'] if n['id'] == note['id'])
+        self.assertEqual(saved['payload']['body'], '保留用户正文')
+        again = self.call('/v1/workflows', dict(cursor=first['snapshot']['cursor'], todoID=t['id']))
+        self.assertEqual(first['workflow']['id'], again['workflow']['id'])
+        self.assertEqual(sum(n['kind'] == 'note' for n in again['snapshot']['entities']), 1)
+        t2, f2 = self.flow()
+        n2 = next(n for n in self.snapshot()['entities'] if n['id'] == f2['noteID'])
+        self.assertIn('T000002', n2['payload']['body'])
+
     def approved(self):
         t,f=self.flow()
         f=self.action(f,'message',role='user',text='Build in /tmp/demo and run tests; do not publish')

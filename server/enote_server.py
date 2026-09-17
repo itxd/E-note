@@ -260,14 +260,25 @@ class Cloud:
         if path == '/v1/workflows':
             todo = self.entity(db, account, string(data.get('todoID'), 'todoID', 36))
             require(todo['kind'] == 'todo' and not todo['payload']['completed'] and not todo['payload'].get('archivedAt'), '只能讨论未完成 TODO')
-            flow = dict(id=uid(), todoID=todo['id'], noteID=uid(), state='discussing',
+            snapshot = self.snapshot(db, account)
+            existing_flow = next((f for f in snapshot['workflows'] if f['todoID'] == todo['id']), None)
+            if existing_flow:
+                return dict(workflow=existing_flow, snapshot=snapshot)
+            linked = sorted((n for n in snapshot['entities'] if n['kind'] == 'note' and not n['deleted']
+                             and n['payload'].get('linkedTodoID') == todo['id']),
+                            key=lambda n: (n['payload'].get('deletedAt') is not None,
+                                           n['payload'].get('createdAt', 0), n['id']))
+            code = 'T' + str(todo['payload']['number']).zfill(6)
+            note_id = str(uuid.UUID(bytes=hashlib.sha256(('enote-linked-note:' + todo['id'].upper()).encode()).digest()[:16])).upper()
+            flow = dict(id=uid(), todoID=todo['id'], noteID=linked[0]['id'] if linked else note_id, state='discussing',
                         revision=0, planVersion=0, plan='', messages=[], events=[], createdAt=time.time())
-            note = dict(id=flow['noteID'], kind='note', deleted=False,
-                        payload=dict(title='实施方案 · '+todo['payload']['text'][:30],
-                                     body='实施方案 · '+todo['payload']['text']+'\n关联 TODO：'+todo['id'],
+            note = linked[0] if linked else dict(id=flow['noteID'], kind='note', deleted=False,
+                        payload=dict(title=code+' · '+todo['payload']['text'][:30],
+                                     body=code+' · '+todo['payload']['text']+'\n关联待办：'+code,
                                      colorName='雾紫', createdAt=time.time(), modifiedAt=time.time(),
                                      isPinned=False, isArchived=False, deletedAt=None,
-                                     linkedTodoID=todo['id'], workflowID=flow['id']))
+                                     linkedTodoID=todo['id']))
+            note['payload'].update(workflowID=flow['id'], deletedAt=None, isArchived=False)
             self.put(db, account, note)
             self.save_flow(db, account, flow)
             return dict(workflow=flow, snapshot=self.snapshot(db, account))

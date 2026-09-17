@@ -241,6 +241,9 @@ struct GutterTab: View {
     var body: some View {
         TabLook(deck: deck, note: note,
                 titleHeight: deck.noteHeight, verticalTitle: true)
+            .contentShape(Rectangle())
+            .onTapGesture(count: 2) { deck.toggleEnlarged() }
+            .help(deck.enlarged ? "双击恢复原大小" : "双击放大至 2.5 倍")
             .overlay(
                 DashedLine()
                     .stroke(Color.secondary.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -341,6 +344,9 @@ struct NoteCardView: View {
 
     private var header: some View {
         HStack(spacing: 8) {
+            if let todoID = note.linkedTodoID, let task = NoteStore.shared.todo(identifier: todoID.uuidString) {
+                Text(task.code).font(.system(.caption, design: .monospaced)).foregroundColor(TodoTheme.accent)
+            }
             Text(note.title)
                 .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)

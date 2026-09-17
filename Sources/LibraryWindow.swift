@@ -96,6 +96,9 @@ struct LibraryView: View {
                     RoundedRectangle(cornerRadius: 3)
                         .fill(NoteColor.named(note.colorName).tab)
                         .frame(width: 10, height: 10)
+                    if let todoID = note.linkedTodoID, let task = store.todo(identifier: todoID.uuidString) {
+                        Text(task.code).font(.system(.caption, design: .monospaced)).foregroundColor(TodoTheme.accent)
+                    }
                     Text(note.title)
                         .font(.system(size: 14, weight: .semibold))
                         .lineLimit(1)
@@ -125,7 +128,7 @@ struct LibraryView: View {
                 .padding(.vertical, 8)
                 Divider()
                 if note.isTodoList {
-                    TodoListView().id(LocalProfile.epoch)
+                    TodoListView(onOpenNote: { selected = $0 }).id(LocalProfile.epoch)
                 } else {
                     NoteEditor(noteID: note.id, deck: nil)
                         .id(LocalProfile.epoch.uuidString + note.id.uuidString)

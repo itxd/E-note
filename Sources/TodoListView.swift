@@ -7,12 +7,11 @@ struct TodoListView: View {
     @State private var filter = 0
     @State private var selectedTagID: UUID?
     @State private var showingTagFilter = false
-    @State private var draft = ""
     @State private var editing: TodoEditSession?
     @State private var editingDate: TodoEditSession?
     @State private var epoch = LocalProfile.epoch
-    @FocusState private var composing: Bool
     var onClose: (() -> Void)? = nil
+    var onOpenNote: (UUID) -> Void = { AppDelegate.shared?.openLinkedNote($0) }
 
     private let accent = TodoTheme.accent
     private var taggedItems: [TodoItem] {
@@ -82,13 +81,19 @@ struct TodoListView: View {
                             guard var current = store.todos().first(where: { $0.id == item.id }) else { return }
                             current.completed.toggle()
                             store.updateTodo(current)
-                        }).id("\(epoch)-\(item.id)")
+                        }, openNote: onOpenNote).id("\(epoch)-\(item.id)")
                     }
                 }
                 .padding(.horizontal, 14)
                 .padding(.bottom, 10)
             }
-            composer
+            TodoComposer { text in
+                var item = TodoItem(text: text)
+                item.tagIDs = selectedTagID.map { [$0] }
+                store.addTodos([item])
+                if filter >= 2 { filter = 1 }
+                return store.lastSaveSucceeded
+            }.id(epoch)
         }
         .background(TodoTheme.canvas)
         .tint(accent)
@@ -98,7 +103,7 @@ struct TodoListView: View {
         .onReceive(store.$notes) { _ in
             if epoch != LocalProfile.epoch {
                 editing = nil; editingDate = nil; selectedTagID = nil
-                showingTagFilter = false; draft = ""; epoch = LocalProfile.epoch
+                showingTagFilter = false; epoch = LocalProfile.epoch
             }
         }
         .popover(item: $editing) { session in
@@ -175,7 +180,16 @@ struct TodoListView: View {
         .padding(14)
     }
 
-    private var composer: some View {
+}
+
+// Draft changes invalidate only this small view, never the decrypted task list.
+struct TodoComposer: View {
+    let submit: (String) -> Bool
+    @State private var draft = ""
+    @FocusState private var composing: Bool
+    private let accent = TodoTheme.accent
+
+    var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "plus.circle.fill").foregroundColor(accent)
             TextField("添加一个待办…", text: $draft)
@@ -201,12 +215,8 @@ struct TodoListView: View {
 
     private func add() {
         let text = draft.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !text.isEmpty else { return }
-        var item = TodoItem(text: text)
-        item.tagIDs = selectedTagID.map { [$0] }
-        store.addTodos([item])
+        guard !text.isEmpty, submit(text) else { return }
         draft = ""
-        if filter >= 2 { filter = 1 }
         composing = true
     }
 }
@@ -224,6 +234,7 @@ struct TodoRow: View {
     let edit: () -> Void
     let editDate: () -> Void
     let toggle: () -> Void
+    var openNote: (UUID) -> Void = { AppDelegate.shared?.openLinkedNote($0) }
     private var dueSoon: Bool { watcher.upcomingTaskIDs.contains(item.id) }
     private var accent: Color { item.overdue ? .red : (dueSoon || item.priority == "high" ? .orange : TodoTheme.accent) }
 
@@ -291,14 +302,21 @@ struct TodoRow: View {
                 }
                 .popover(isPresented: $choosingTags) { TodoTagPicker(itemID: item.id) }
                 .popover(item: $inspectingTag) { tag in TagInfoView(tagID: tag.id) }
-                ForEach(store.libraryNotes().filter { $0.linkedTodoID == item.id }) { note in
-                    Button { AppDelegate.shared?.openLinkedNote(note.id) } label: {
-                        Label("方案与执行记录", systemImage: "doc.text").font(.system(size: 10))
-                    }.buttonStyle(.plain).foregroundColor(TodoTheme.accent)
-                }
+
             }
             Spacer(minLength: 0)
             VStack(spacing: 6) {
+            Button {
+                do {
+                    let note = try store.ensureLinkedNote(todoID: item.id, epoch: epoch)
+                    openNote(note.id)
+                } catch { errorMessage = error.localizedDescription }
+            } label: {
+                Image(systemName: store.linkedNote(todoID: item.id) == nil ? "square.and.pencil" : "doc.text")
+                    .frame(width: 20, height: 20)
+            }.buttonStyle(.plain).foregroundColor(TodoTheme.accent)
+                .help(store.linkedNote(todoID: item.id) == nil ? "创建关联便签 · \(item.code)" : "查看关联便签 · \(item.code)")
+                .accessibilityLabel(store.linkedNote(todoID: item.id) == nil ? "创建关联便签" : "查看关联便签")
             Button {
                 guard epoch == LocalProfile.epoch,
                       let current = store.todo(identifier: item.id.uuidString) else { return }

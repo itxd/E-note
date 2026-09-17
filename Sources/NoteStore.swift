@@ -1,4 +1,5 @@
 import Foundation
+import CryptoKit
 
 // MARK: - 便签数据源(ObservableObject,唯一数据源)
 
@@ -142,6 +143,44 @@ final class NoteStore: ObservableObject {
               let data = try? JSONEncoder().encode(all) else { return }
         notes[i].tagData = crypto.seal(String(decoding: data, as: UTF8.self))
         save()
+    }
+
+    func linkedNote(todoID: UUID) -> NoteRecord? {
+        notes.filter { !$0.isTodoList && $0.linkedTodoID == todoID }
+            .sorted {
+                if ($0.deletedAt == nil) != ($1.deletedAt == nil) { return $0.deletedAt == nil }
+                return $0.createdAt == $1.createdAt ? $0.id.uuidString < $1.id.uuidString : $0.createdAt < $1.createdAt
+            }.first
+    }
+
+    /// Reuse archived/deleted records so repeated clicks cannot create another note.
+    func ensureLinkedNote(todoID: UUID, epoch: UUID) throws -> NoteRecord {
+        guard epoch == LocalProfile.epoch else { throw APIError(409, "账号已切换") }
+        guard let item = todo(identifier: todoID.uuidString) else { throw APIError(404, "待办不存在") }
+        guard canSave else { throw APIError(500, "无法保存便签") }
+        var note = linkedNote(todoID: todoID) ?? NoteRecord.make(colorName: "雾紫")
+        if linkedNote(todoID: todoID) == nil {
+            // The same task created offline on two devices gets the same note identity.
+            let bytes = Array(SHA256.hash(data: Data(("enote-linked-note:" + todoID.uuidString).utf8)).prefix(16))
+            note.id = UUID(uuid: (bytes[0], bytes[1], bytes[2], bytes[3], bytes[4], bytes[5], bytes[6], bytes[7],
+                                 bytes[8], bytes[9], bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]))
+        }
+        let previous = notes
+        if let index = notes.firstIndex(where: { $0.id == note.id }) {
+            note.deletedAt = nil
+            note.isArchived = false
+            note.modifiedAt = Date()
+            notes[index] = note
+        } else {
+            let content = "\(item.code) · \(item.text)\n关联待办：\(item.code)\n\n"
+            note.linkedTodoID = item.id
+            note.title = deriveTitle(from: content)
+            note.body = crypto.seal(content)
+            notes.insert(note, at: 0)
+        }
+        save()
+        guard lastSaveSucceeded else { notes = previous; throw APIError(500, "便签保存失败") }
+        return note
     }
 
     func deleteTag(id: UUID) throws {

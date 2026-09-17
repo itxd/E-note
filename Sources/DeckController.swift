@@ -19,6 +19,7 @@ final class DeckController: NSObject, ObservableObject {
     @Published var state: State = .rest
     @Published var expandedID: UUID? = nil
     @Published var revealedCount: Int = 0
+    @Published var enlarged = false
     @Published var showFind: Bool = false
 
     private var fanWork: DispatchWorkItem?
@@ -85,10 +86,17 @@ final class DeckController: NSObject, ObservableObject {
     var noteHeight: CGFloat {
         let isTodo = expandedID.flatMap { NoteStore.shared.note(id: $0) }?.isTodoList == true
         // TODO 卡片需要给筛选与输入框留空间，小尺寸下也能完整显示至少一项。
-        return min(max((isTodo ? 340 : 300) * settings.deckScale, isTodo ? 260 : 200), screen.frame.height - 120)
+        let base = min(max((isTodo ? 340 : 300) * settings.deckScale, isTodo ? 260 : 200), screen.frame.height - 120)
+        return min(base * (enlarged ? 2.5 : 1), screen.visibleFrame.height - 16)
     }
 
-    var noteWidth: CGFloat { 340 * settings.deckScale }
+    var noteWidth: CGFloat { min(340 * settings.deckScale * (enlarged ? 2.5 : 1), screen.visibleFrame.width - cardWidth * 2) }
+
+    func toggleEnlarged() {
+        guard state == .expanded else { return }
+        enlarged.toggle()
+        applyFrame(animated: false)
+    }
     var pillWidth: CGFloat { 12 }
 
     /// 每张 tab 露出的窄条高度:固定 22pt × 缩放(短标题省略显示)

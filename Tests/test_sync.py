@@ -174,6 +174,24 @@ def main():
                 assert '确认执行' in replies and '验收' in replies
                 assert db.execute('SELECT COUNT(*) FROM executions').fetchone()[0]==1
             print('PASS bridge workflow: allowlist, discussion before plan, explicit version/code approval, real CLI child, durable logs, cloud note links, result acceptance')
+            # Keeping both note versions must leave just one task-linked note.
+            linked_task = api(0, '/v1/todos', dict(text='关联便签冲突测试'))['items'][0]
+            sync(0)
+            flow = api(0, '/v1/workflows', dict(todoID=linked_task['id'], requestID=str(uuid.uuid4()),
+                       cursor=api(0, '/v1/sync/status')['cursor']))['workflow']
+            sync(1)
+            note_id = flow['noteID']
+            api(0, '/v1/notes/'+note_id, dict(body='A note version'), method='PATCH')
+            api(1, '/v1/notes/'+note_id, dict(body='B note version'), method='PATCH')
+            sync(0)
+            try: sync(1); raise AssertionError('expected note conflict')
+            except urllib.error.HTTPError as e: assert e.code in (409, 502)
+            api(1, '/v1/sync/resolve', dict(id=note_id, choice='both'))
+            sync(1); sync(0)
+            notes = api(0, '/v1/notes/all')['notes']
+            assert sum(n['linkedTodoID'] == linked_task['id'] for n in notes) == 1
+            assert {'A note version', 'B note version'} <= {n['body'] for n in notes}
+            print('PASS linked note conflict copies preserve text without duplicating task linkage')
             # Simulate interruption after the durable sync journal was written but before notes/baseline commit.
             sync(0)
             processes[1].terminate(); processes[1].wait(timeout=5)

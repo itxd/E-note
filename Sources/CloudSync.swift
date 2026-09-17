@@ -315,6 +315,7 @@ final class CloudSync: ObservableObject {
             if copy.kind == "note" {
                 copy.payload["title"] = .string((copy.payload["title"]?.string ?? "便签") + " · 本机冲突副本")
                 copy.payload["workflowID"] = .null
+                copy.payload["linkedTodoID"] = .null
             }
             values.append(copy)
         default: throw APIError(400, "choice 必须为 local、remote 或 both")

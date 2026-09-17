@@ -193,6 +193,7 @@ with tempfile.TemporaryDirectory(prefix='enote-tests-') as directory:
         process.terminate(); process.wait(timeout=5); process = None
         subprocess.run([str(BINARY), 'preview'], cwd=ROOT, env=env, check=True)
         subprocess.run([str(BINARY), 'todo-features'], cwd=ROOT, env=env, check=True)
+        subprocess.run([str(BINARY), 'typing'], cwd=ROOT, env=env, check=True, timeout=30)
         print('PASS: HTTP 鉴权、校验、批量/并发、分类/完成、分片与请求大小限制、开关、客户端、加密与重启持久化；已生成深浅色界面预览')
     finally:
         if process is not None and process.poll() is None:

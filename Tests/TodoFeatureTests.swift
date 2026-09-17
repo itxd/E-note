@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 
 func runTodoFeatureTests() throws {
     let old = """
@@ -82,6 +83,33 @@ func runTodoActionTests() throws {
     let first = store.addTodos([TodoItem(text: "原始标题", category: "测试")])[0]
     let id = first.id
     assert(!first.canDelete && !store.deleteTodo(id: id))
+
+    let linked = try store.ensureLinkedNote(todoID: id, epoch: epoch)
+    assert(linked.linkedTodoID == id && store.body(of: linked).contains(first.code))
+    let reused = try store.ensureLinkedNote(todoID: id, epoch: epoch)
+    assert(reused.id == linked.id)
+    store.setArchived(id: linked.id, archived: true)
+    let unarchived = try store.ensureLinkedNote(todoID: id, epoch: epoch)
+    assert(!unarchived.isArchived)
+    _ = store.delete(id: linked.id)
+    let restored = try store.ensureLinkedNote(todoID: id, epoch: epoch)
+    assert(restored.id == linked.id && restored.deletedAt == nil)
+    assert(store.notes.filter { $0.linkedTodoID == id }.count == 1)
+    do {
+        _ = try store.ensureLinkedNote(todoID: id, epoch: UUID())
+        assertionFailure("stale account created a linked note")
+    } catch let error as APIError { assert(error.status == 409) }
+    if let screen = NSScreen.main {
+        let deck = DeckController(screen: screen)
+        deck.expand(store.todoList!, focus: false)
+        let width = deck.noteWidth, height = deck.noteHeight
+        deck.toggleEnlarged()
+        assert(deck.noteWidth == min(width * 2.5, screen.visibleFrame.width - deck.cardWidth * 2))
+        assert(deck.noteHeight == min(height * 2.5, screen.visibleFrame.height - 16))
+        deck.toggleEnlarged()
+        assert(deck.noteWidth == width && deck.noteHeight == height)
+        deck.teardown()
+    }
 
     // An open title editor must preserve changes made to other fields.
     var external = first

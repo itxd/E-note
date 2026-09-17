@@ -18,6 +18,7 @@ struct ENoteTests {
         let store = NoteStore.shared
         if CommandLine.arguments.contains("cloud-merge") { runCloudMergeTests(); try runProfileIsolationTests(); return }
         if CommandLine.arguments.contains("todo-features") { try runTodoFeatureTests(); return }
+        if CommandLine.arguments.contains("typing") { runTodoTypingTests(); return }
         if CommandLine.arguments.contains("serve") {
             LocalAPIServer.shared.configure()
             if ProcessInfo.processInfo.environment["ENOTE_TEST_AUTO_SYNC"] == "1" { CloudSync.shared.start() }
