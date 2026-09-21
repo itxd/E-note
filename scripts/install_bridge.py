@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Install a per-user bridge runtime and optionally its launch agent. 作者：韦冬 2220285589@qq.com"""
 import argparse
+import json
 import os
 from pathlib import Path
 import plistlib
@@ -17,6 +18,18 @@ runtime=support/'bridge-runtime'; runtime.mkdir(parents=True,exist_ok=True,mode=
 config=support/'bridge.json'
 if not config.exists():
     shutil.copyfile(root/'bridge/config.example.json',config); os.chmod(config,0o600)
+else:
+    current=json.loads(config.read_text())
+    defaults=json.loads((root/'bridge/config.example.json').read_text())
+    changed=False
+    if 'automation' not in current:
+        current['automation']=defaults['automation']; changed=True
+    else:
+        for key,value in defaults['automation'].items():
+            if key not in current['automation']:
+                current['automation'][key]=value; changed=True
+    if changed:
+        config.write_text(json.dumps(current,ensure_ascii=False,indent=2)+'\n'); os.chmod(config,0o600)
 shutil.copyfile(root/'bridge/enote_bridge.py',runtime/'enote_bridge.py')
 shutil.copyfile(root/'bridge/kimi-discussion.md',runtime/'kimi-discussion.md')
 shutil.copyfile(root/'bridge/requirements.txt',runtime/'requirements.txt')

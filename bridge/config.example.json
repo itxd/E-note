@@ -8,5 +8,15 @@
   "workspaces": ["/absolute/path/to/your/project"],
   "executionTimeoutSeconds": 3600,
   "apiConfig": "~/Library/Application Support/ENote/api.json",
-  "dataDirectory": "~/Library/Application Support/ENote/bridge"
+  "dataDirectory": "~/Library/Application Support/ENote/bridge",
+  "automation": {
+    "enabled": true,
+    "scanIntervalSeconds": 3600,
+    "maxTodosPerScan": 10,
+    "requireWorkspaceBelowRoot": false,
+    "autoExecuteLocal": true,
+    "allowServerExecution": false,
+    "todoTagIDs": [],
+    "notificationOpenID": ""
+  }
 }

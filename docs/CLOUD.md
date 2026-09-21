@@ -58,6 +58,14 @@ python3 scripts/install_bridge.py
 | `command` | 本机 CLI 可执行文件的绝对路径 |
 | `workspaces` | 允许执行的项目绝对目录；讨论默认使用第一项 |
 | `executionTimeoutSeconds` | 单次执行超时，默认 3600 秒 |
+| `automation.enabled` | 启用结构化 TODO 的定时增量扫描 |
+| `automation.scanIntervalSeconds` | 扫描间隔，默认 3600，最小 300 秒 |
+| `automation.maxTodosPerScan` | 每轮最多触发 AI 的新增或变更任务数，默认 10 |
+| `automation.requireWorkspaceBelowRoot` | 为 `true` 时必须指定根目录下的具体项目，不能把整个根目录作为执行目录 |
+| `automation.autoExecuteLocal` | 资料充分且风险为 `local_safe` 时自动执行 |
+| `automation.todoTagIDs` | 可选 TODO 标签 UUID 白名单；空数组表示全部未完成 TODO |
+| `automation.notificationOpenID` | 主动通知目标；留空使用 `allowedUsers` 第一项 |
+| `automation.allowServerExecution` | 默认 `false`；保留给独立的受限服务器执行器 |
 
 配置文件应为 `0600`。修改后启用登录自动启动：
 
@@ -85,6 +93,34 @@ python3 scripts/install_bridge.py --enable
 ```
 
 机器人会给出实际流程编号、版本和确认码，直接复制对应指令。`继续` 会重新进入讨论，旧方案需重新确认。当前没有聊天式指定执行电脑；每个桥接配置明确绑定账号、CLI 和允许工作目录。
+
+### 自动扫描与 Note 补充
+
+启用 `automation.enabled` 后，桥接启动时先扫描一次，之后按 `scanIntervalSeconds` 扫描。扫描器只读取 `/v1/todos`、`/v1/workflows` 和任务自己的关联便签；不会全文搜索普通便签。只有 TODO 内容或关联便签“我的资料补充”区域的摘要发生变化时才调用 AI，因此空扫描不消耗模型调用。
+
+新 TODO 会自动创建关联方案便签。用户在以下标记之间补充资料，标记本身不能删除：
+
+```text
+<!-- ENOTE_AUTOMATION_INPUT_START -->
+目标、资料、绝对工作目录、约束和验收标准
+<!-- ENOTE_AUTOMATION_INPUT_END -->
+```
+
+工作目录必须真实存在，并位于 `workspaces` 任一根目录之下。AI 先在桥接私有目录中判断资料完整性，确认具体目录后才在该目录以只读方式检查项目和制定方案。
+
+`local_safe` 方案由配置中的自动化策略预授权；服务器、部署、推送、删除、外部消息、付款、凭据、系统设置等任务必须修改关联 Note 的批准区。批准区包含流程 UUID、方案版本、一次性确认码和方案 SHA-256；任一字段不一致都不会执行。用户修改 Note 会改变服务端 revision，桥接会以完全相同的方案内容生成新版本后立即批准，避免绕过既有 revision 防护。
+
+服务器风险任务在 `allowServerExecution: false` 时即使已批准也不会领取执行锁或连接服务器。不要为了省事把普通执行切换为完全访问权限；应另建只接受批准主机和精确命令的服务器执行器。
+
+配置完成后可先检查而不启动常驻进程；`--scan-once` 会真实创建卡片、调用 AI，并可能执行符合策略的本地任务，只在明确需要时使用：
+
+```bash
+"$HOME/Library/Application Support/ENote/bridge-runtime/venv/bin/python3" \
+  "$HOME/Library/Application Support/ENote/bridge-runtime/enote_bridge.py" --check
+
+"$HOME/Library/Application Support/ENote/bridge-runtime/venv/bin/python3" \
+  "$HOME/Library/Application Support/ENote/bridge-runtime/enote_bridge.py" --scan-once
+```
 
 ## 从任务到验收
 

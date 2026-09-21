@@ -35,4 +35,11 @@ python3 scripts/e_note.py complete --id T000001
 
 用户要讨论、制定方案或让 AI 执行 TODO 时，阅读 [云端任务执行协议](references/workflows.md)。必须先澄清任务并形成关联方案便签，取得用户对具体版本方案的确认，然后领取服务器执行锁；执行结果写回后等待用户验收，不能由 AI 自行完成验收。
 
+若关联便签包含 `ENOTE_AUTOMATION_CARD_V1`，它由本机桥接的定时任务维护。只把两个标记之间的文字视为用户补充：
+
+- `ENOTE_AUTOMATION_INPUT_START/END`：用户提供的资料、工作目录与验收标准。
+- `ENOTE_AUTOMATION_APPROVAL_START/END`：需要人工批准的结构化字段；AI 不得把 `decision` 改为 `approve`，也不得修改流程 UUID、版本、确认码、方案摘要、风险和工作目录。
+
+定时流程只会自动执行 `local_safe` 本地任务。任何服务器、远程主机、生产环境、部署、推送、删除、外部消息、付款、凭据或系统设置都必须等待 Note 人工批准；服务器执行器未单独启用时，批准也不会授予网络访问。
+
 完整 API 协议随 E note 项目提供在 `docs/API.md`。日常任务使用上述脚本即可。
