@@ -27,6 +27,7 @@ struct SettingsView: View {
     @ObservedObject var store = NoteStore.shared
     @State private var tab = 0
     @ObservedObject var api = LocalAPIServer.shared
+    @ObservedObject var updater = AppUpdater.shared
 
     var body: some View {
         TabView(selection: $tab) {
@@ -66,12 +67,25 @@ struct SettingsView: View {
                 .accessibilityLabel("E note 应用图标")
             Text(AppInfo.name)
                 .font(.system(size: 28, weight: .semibold))
+            Text("版本 \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "—")")
+                .foregroundColor(.secondary)
             Text("屏幕边缘，随手记下。")
                 .foregroundColor(.secondary)
             Text("作者：\(AppInfo.author)")
                 .padding(.top, 12)
             Link(AppInfo.email, destination: URL(string: "mailto:\(AppInfo.email)")!)
                 .textSelection(.enabled)
+            Toggle("自动检查更新（每天一次）", isOn: Binding(
+                get: { updater.automaticallyChecks }, set: { updater.automaticallyChecks = $0 }
+            ))
+            .disabled(!updater.available)
+            HStack {
+                Button("检查更新…") { updater.checkForUpdates() }
+                Link("发布记录", destination: URL(string: "https://github.com/itxd/E-note/releases")!)
+            }
+            if let error = updater.configurationError {
+                Text(error).font(.caption).foregroundColor(.secondary)
+            }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }

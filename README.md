@@ -53,6 +53,8 @@ E note 把随手记录和行动清单放在屏幕边缘。普通便签承载想�
 
 当前版本：**v1.0.2** · [更新说明](docs/releases/v1.0.2.md)
 
+源码已加入待发布的 **v1.0.3** 应用内更新功能：[更新说明](docs/releases/v1.0.3.md)。首次手动安装带更新器的版本后，可每天自动检查，并点击“一键更新并重启”。
+
 **[下载 macOS 安装包](https://github.com/itxd/E-note/releases/latest/download/E-note-macOS-universal.dmg)** · [所有版本](https://github.com/itxd/E-note/releases) · [完整安装说明](docs/INSTALL.txt)
 
 适用于 **macOS 13+，Intel 和 Apple 芯片**。打开 DMG，将 **E note** 拖入 **Applications（应用程序）**，再从应用程序文件夹启动。把鼠标移到屏幕边缘的小条即可使用；应用不显示 Dock 图标，无需登录即可管理本机便签和待办。
@@ -62,6 +64,8 @@ E note 把随手记录和行动清单放在屏幕边缘。普通便签承载想�
 ### 从源码构建
 
 需要 macOS 13 或更高版本，以及 Xcode Command Line Tools。Python 客户端、Skill 安装脚本和测试需要 Python 3，客户端只使用标准库。
+
+构建脚本会下载并校验固定版本的 Sparkle 框架。普通本地构建不检查线上更新；正式 Universal 构建与签名发布流程见 [自动更新与发布](docs/UPDATES.md)。更新签名使用项目本地 `.update-signing/ed25519.key` 中的 Ed25519 密钥（不提交 Git），不需要 Apple 开发者账号。
 
 在项目目录执行：
 

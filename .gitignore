@@ -13,6 +13,7 @@ xcuserdata/
 
 # SSH、私钥和本机环境配置（保留可提交的示例配置）
 .ssh
+.update-signing/
 .env
 .env.*
 !.env.example

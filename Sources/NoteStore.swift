@@ -566,6 +566,26 @@ final class NoteStore: ObservableObject {
         }
     }
 
+    func saveAllBeforeTermination() -> Bool {
+        EditorRegistry.shared.saveAll()
+        save()
+        return lastSaveSucceeded
+    }
+
+    func prepareForUpdate() throws {
+        guard saveAllBeforeTermination() else {
+            throw NSError(domain: "EnoteUpdate", code: 2, userInfo: [NSLocalizedDescriptionKey:
+                "便签保存失败，已取消重启。请检查数据目录权限和磁盘空间后重试。"])
+        }
+        // Keep an encrypted, per-profile snapshot outside the replaceable application bundle.
+        let backup = AppPaths.notesFile.deletingLastPathComponent().appendingPathComponent("pre-update-notes.json")
+        let data = try Data(contentsOf: AppPaths.notesFile)
+        guard NoteStoreIO.atomicWrite(data, to: backup) else {
+            throw NSError(domain: "EnoteUpdate", code: 3, userInfo: [NSLocalizedDescriptionKey:
+                "更新前备份失败，已取消重启。请检查磁盘空间后重试。"])
+        }
+    }
+
     private var canSave: Bool {
         let expected = crypto.key.withUnsafeBytes { Data($0) }
         return !integrityFailed && !NoteStoreIO.loadFailed && (try? Data(contentsOf: AppPaths.keyFile)) == expected

@@ -137,6 +137,7 @@ struct PillView: View {
             Button("Colour chips(纯色块)") { AppSettings.shared.deckStyle = "chips" }
             Divider()
             Button("设置…") { AppDelegate.shared.showSettings() }
+            Button("检查更新…") { AppUpdater.shared.checkForUpdates() }
             Button("关于 E note") { AppInfo.showAbout() }
         }
         .gesture(

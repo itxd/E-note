@@ -28,6 +28,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         installFindKeyMonitor()
         installObservers()
         rebuildDecks()
+        AppUpdater.shared.start()
 
         // overdue 扫描(30s)与已删除 30 天自动清除(启动时 + 每 6 小时)
         OverdueWatcher.shared.start()
@@ -53,9 +54,20 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
                                                object: nil)
     }
 
+    func applicationShouldTerminate(_ sender: NSApplication) -> NSApplication.TerminateReply {
+        guard NoteStore.shared.saveAllBeforeTermination() else {
+            let alert = NSAlert()
+            alert.messageText = "便签尚未保存，已取消退出"
+            alert.informativeText = "请检查磁盘空间和数据目录权限后重试。"
+            alert.runModal()
+            return .terminateCancel
+        }
+        return .terminateNow
+    }
+
     func applicationWillTerminate(_ notification: Notification) {
         // 关闭时也保存(自动保存早已落盘,这里兜底)
-        EditorRegistry.shared.active?.saveNow()
+        EditorRegistry.shared.saveAll()
         LocalAPIServer.shared.stop()
     }
 
@@ -97,6 +109,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         let appMenu = NSMenu(title: "E note")
         let aboutItem = appMenu.addItem(withTitle: "关于 E note", action: #selector(showAbout), keyEquivalent: "")
         aboutItem.target = self
+        let updateItem = appMenu.addItem(withTitle: "检查更新…", action: #selector(AppUpdater.checkForUpdates), keyEquivalent: "")
+        updateItem.target = AppUpdater.shared
         appMenu.addItem(.separator())
         appMenu.addItem(withTitle: "设置…", action: #selector(openSettings), keyEquivalent: ",")
         appMenu.addItem(.separator())
