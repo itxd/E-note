@@ -401,6 +401,10 @@ MCP 使用标准输入输出，由 Codex 启动本机连接器访问 E note；�
 | `enote_update_todo` | 按编号修改内容、分类、期限、完成状态 |
 | `enote_sync` | 同步已登录账号 |
 
+MCP 关闭待办时，`enote_update_todo` 必须同时提供 `completed=true`、`completionNoteID` 和 `executionConclusion`。连接器校验 note 的 `linkedTodoID` 与待办 UUID 一致，追加带时间的结论并回读确认后才关闭；失败时保持待办未完成。普通字段修改不需要这两个参数。结论应记录完成内容、验证、交付与备份位置、剩余事项，不含凭据。重试相同结论不会重复追加。已有工作流继续使用 `finish` / 用户验收后的 `accept`。
+
+该保护位于 MCP 连接器，不是桌面 UI 或原始 HTTP API 的全局约束。请更新已安装的连接器并重新连接 MCP，旧进程不会自动加载新代码。
+
 安装后让 Codex 重新加载工具，再发送“用 E note MCP 查看我的待办”。cc-connect 的 `exec` 后端会在下一条消息启动 Codex 并加载配置；常驻 app-server 后端需重新启动相应会话。若 shell 报 `Operation not permitted` 而 MCP 可用，说明 shell 的本地网络访问受限，仍可使用 MCP 操作 E note。
 
 此接入提供日常便签和 TODO 操作；带执行锁的自动执行、断线结果补记和人工验收仍使用 [专用工作流桥接](docs/CLOUD.md)，不能把普通聊天能读取清单当作全流程验收通过。Codex 配置方式见 [官方 MCP 文档](https://developers.openai.com/codex/mcp)。

@@ -5,6 +5,7 @@ Only fixed E note operations are exposed; no arbitrary URLs, files or shell comm
 The host starts this local connector and communicates through stdin/stdout.
 """
 import argparse
+from datetime import datetime, timezone
 import json
 from pathlib import Path
 import re
@@ -52,9 +53,12 @@ TOOLS = [
     tool('enote_create_note', '按用户要求创建普通便签；超时后先查询，不自动重复创建。',
          {'title': TEXT, 'body': TEXT}, ['body']),
     tool('enote_create_todo', '按用户要求添加一条独立 TODO；超时后先查询，不自动重复创建。', TODO_FIELDS, ['text']),
-    tool('enote_update_todo', '按已有编号或 UUID 修改 TODO。先核对目标；关联执行任务需用户验收后才能完成。',
+    tool('enote_update_todo', '按编号或 UUID 修改 TODO。完成前需用户授权，且必须提供 completionNoteID 与 executionConclusion；工具先追加结论并回读关联 note，再标记完成。失败时不得绕过此流程。',
          dict(TODO_FIELDS, id={'type': 'string', 'description': 'T000001、数字编号或 UUID'},
-              completed={'type': 'boolean'}, archived={'type': 'boolean'}), ['id']),
+              completed={'type': 'boolean'}, archived={'type': 'boolean'},
+              completionNoteID=dict(TEXT, description='completed=true 必填；linkedTodoID 对应该待办的非删除 note UUID'),
+              executionConclusion={'type': 'string', 'minLength': 1, 'maxLength': 20000,
+                                   'description': 'completed=true 必填；实际完成内容、验证结果、交付与备份位置、剩余事项；不含密码或密钥。'}), ['id']),
 ]
 
 
@@ -95,6 +99,45 @@ def validate(arguments, schema):
             raise ValueError('数组参数无效：' + key)
         if isinstance(value, str) and (len(value.strip()) < field.get('minLength', 0) or len(value) > field.get('maxLength', 200000)):
             raise ValueError('参数不能为空：' + key)
+
+
+class CompletionError(ValueError):
+    """Fixed, actionable completion failures; never expose API bodies."""
+
+
+def complete_with_note(config, identifier, payload, note_id, conclusion):
+    if not note_id or not conclusion or not conclusion.strip():
+        raise CompletionError('关闭待办必须提供 completionNoteID 和 executionConclusion；先核对关联 note，不得直接关闭或绕过 MCP。')
+    note_id = str(UUID(note_id)).upper()
+    todo = api_request(config, 'GET', '/v1/todos/' + identifier)['item']
+    todo_id = str(UUID(todo['id'])).upper()
+    note_path = '/v1/notes/' + note_id
+    note = api_request(config, 'GET', note_path)['note']
+
+    def linked(value):
+        return (value.get('kind') == 'note' and value.get('deletedAt') is None
+                and str(value.get('linkedTodoID', '')).upper() == todo_id)
+
+    if not linked(note):
+        raise CompletionError('结论 note 未关联到目标待办或已删除；请核对 linkedTodoID，未关闭待办。')
+    if note.get('workflowID'):
+        raise CompletionError('该待办关联执行工作流；请通过 finish 写入结果，并在用户验收后 accept，不能直接关闭。')
+    conclusion = conclusion.strip()
+    # A complete delimited entry makes retries safe after either write timed out.
+    marker = '[ENOTE_EXECUTION_CONCLUSION:' + todo_id + ']'
+    entry = marker + '\n' + conclusion + '\n[/ENOTE_EXECUTION_CONCLUSION]'
+    body = note['body']
+    if entry not in body:
+        stamp = datetime.now(timezone.utc).isoformat(timespec='seconds')
+        body = body + '\n\n执行结论 · ' + stamp + '\n' + entry
+        if len(body) > NOTE_FIELDS['body']['maxLength']:
+            raise CompletionError('关联 note 加入结论后超过长度上限；请整理内容后重试，未关闭待办。')
+        api_request(config, 'PATCH', note_path, {'body': body})
+    saved = api_request(config, 'GET', note_path)['note']
+    if not linked(saved) or saved.get('body') != body:
+        raise CompletionError('执行结论保存后回读不一致；请检查关联 note，未关闭待办。')
+    # Use the immutable UUID resolved before writing the note, not a mutable T number.
+    return api_request(config, 'PATCH', '/v1/todos/' + todo_id, payload)
 
 
 def invoke(name, arguments, config):
@@ -148,10 +191,16 @@ def invoke(name, arguments, config):
     if name == 'enote_update_todo':
         payload = dict(arguments)
         identifier = payload.pop('id').upper()
+        note_id = payload.pop('completionNoteID', None)
+        conclusion = payload.pop('executionConclusion', None)
         if not re.fullmatch(r'T?[0-9]+', identifier):
             identifier = str(UUID(identifier))
         if not payload:
             raise ValueError('至少提供一个修改字段')
+        if payload.get('completed') is True:
+            return complete_with_note(config, identifier, payload, note_id, conclusion)
+        if note_id is not None or conclusion is not None:
+            raise CompletionError('completionNoteID 和 executionConclusion 仅用于 completed=true；其他修改请省略这两个字段。')
         return api_request(config, 'PATCH', '/v1/todos/' + identifier, payload)
     return api_request(config, 'POST', '/v1/notes' if name == 'enote_create_note' else '/v1/todos', arguments)
 
@@ -170,8 +219,8 @@ def dispatch(message, config):
         requested = params.get('protocolVersion')
         version = requested if requested in ('2024-11-05', '2025-03-26', '2025-06-18', '2025-11-25') else '2024-11-05'
         response['result'] = {'protocolVersion': version, 'capabilities': {'tools': {}},
-                              'serverInfo': {'name': 'e-note', 'version': '1.1.0'},
-                              'instructions': '操作 E note 优先使用这些专用工具，无需在 shell 中连接本地 HTTP。仅按用户要求修改记录。'}
+                              'serverInfo': {'name': 'e-note', 'version': '1.2.0'},
+                              'instructions': '操作 E note 优先使用这些专用工具，无需在 shell 中连接本地 HTTP。仅按用户要求修改记录。关闭待办必须先在 linkedTodoID 匹配的 note 保存执行结论并回读确认；调用 enote_update_todo 时提供 completionNoteID、executionConclusion 和 completed=true。不得通过其他工具绕过；已有用户关闭授权无需重复确认。'}
     elif method == 'ping':
         response['result'] = {}
     elif method == 'tools/list':
@@ -180,6 +229,8 @@ def dispatch(message, config):
         try:
             result = invoke(params.get('name'), params.get('arguments', {}), config)
             response['result'] = {'content': [{'type': 'text', 'text': json.dumps(result, ensure_ascii=False)}], 'isError': False, 'structuredContent': result}
+        except CompletionError as error:
+            response['result'] = failure(str(error))
         except urllib.error.HTTPError as error:
             # Never forward arbitrary HTTP bodies or headers (which can contain credentials).
             response['result'] = failure('E note API 返回 HTTP ' + str(error.code) + ('；目标受保护：待办需已完成或归档，标签需解除绑定，已删除便签需先恢复。' if error.code == 409 else '；请检查目标、参数及 API 设置；新增工具需要新版 E note。'))

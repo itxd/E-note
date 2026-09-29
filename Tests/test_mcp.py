@@ -88,11 +88,11 @@ class MCPTests(unittest.TestCase):
         results = self.run_messages([
             self.call('enote_create_note', {'title': '会议', 'body': '确认范围'}),
             self.call('enote_create_todo', {'text': '验证功能', 'priority': 'high'}),
-            self.call('enote_update_todo', {'id': 't000001', 'completed': True, 'dueAt': None}),
+            self.call('enote_update_todo', {'id': 't000001', 'completed': False, 'dueAt': None}),
         ])
         self.assertTrue(all(not r['result']['isError'] for r in results))
         self.assertEqual(self.server.calls[0], ('POST', '/v1/notes', {'title': '会议', 'body': '确认范围'}))
-        self.assertEqual(self.server.calls[2], ('PATCH', '/v1/todos/T000001', {'completed': True, 'dueAt': None}))
+        self.assertEqual(self.server.calls[2], ('PATCH', '/v1/todos/T000001', {'completed': False, 'dueAt': None}))
 
     def test_tag_read_edit_and_todo_binding(self):
         identifier = '00000000-0000-0000-0000-000000000001'

@@ -17,7 +17,6 @@ python3 scripts/e_note.py note --title '会议记录' --body '确定周五发布
 python3 scripts/e_note.py todo --text '完成回归测试' --category 工作 --priority high --due-at '2026-09-18T17:00:00+08:00'
 python3 scripts/e_note.py todos
 python3 scripts/e_note.py update --id T000001 --text '完成全部回归测试' --priority high
-python3 scripts/e_note.py complete --id T000001
 ```
 
 - 普通记录创建 note；可执行事项加入唯一的 TODOList，不把解释性长文或会议全文当成任务。
@@ -30,6 +29,14 @@ python3 scripts/e_note.py complete --id T000001
 - 配置缺失或连接失败时，说明需启动 E note，并在“设置 → API”开启调用。不要改为写其他应用。常驻 TODOList 开关关闭时仍能添加任务，但不会替用户打开常驻开关。
 - shell 报 `Operation not permitted` 时，先用可用的 `enote_health` / `enote_list_todos` MCP 工具检查；不能仅凭 shell 网络受限断言应用未启动。MCP 未安装时说明需要接入本机 E note MCP，不自动修改宿主沙箱权限。
 - 创建请求超时或返回保存失败时，先用 `notes` / `todos` 查询是否已写入，不要自动重复提交；这些创建接口没有幂等键。
+
+## 待办执行结论与关闭
+
+- 执行结束后，将实际完成内容、验证结果、交付位置、涉及的部署与备份、剩余事项写入该待办的关联 note，保留原需求和历史记录，不记录密码、密钥。未完成也记录实际进度，不宣称完成。
+- 按 TODO UUID 与 note 的 `linkedTodoID` 核对关联，不能只按标题猜测；读取现有 note 后追加，不重复创建。关联缺失、歧义或 note 已删除时，先解决关联，不关闭待办；普通 `enote_create_note` 不支持建立关联，不能假装已关联。
+- 用户授权关闭且实际完成后，调用 `enote_update_todo`，传 `completed=true`、`completionNoteID`、`executionConclusion`。MCP 会追加结论、回读确认成功，再修改完成状态。已有关闭授权无需再次询问。
+- 结论写入或回读失败时不关闭，不通过 CLI、原始 HTTP 或其他工具绕过。发生超时时先查 note 和 TODO，再用相同结论重试，避免重复追加。发现已关闭却漏写结论时补写原关联 note，保持既有完成状态。
+- 有 `workflowID` 的任务仍遵守下文执行协议：先 `finish` 写回结果，再在用户验收后 `accept`；不能用普通 TODO 修改冒充工作流验收。
 
 账号已登录时，在读取远程任务或执行修改前先运行 `python3 scripts/e_note.py sync`，并确认 `sync-status` 的账号与用户目标一致。冲突或网络失败时保留本机记录，暂停远程执行，不宣称云端已更新。
 
