@@ -15,12 +15,23 @@ enum TodoTheme {
     /// 叠在毛玻璃上的色层，透明度较高，只透出少量桌面。
     static let canvasTint = adaptive(light: 0xF6F6FA, dark: 0x14151A, alpha: (0.78, 0.82))
     static let surface = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (0.78, 0.055))
-    static let surfaceHover = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (0.96, 0.085))
     static let raised = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (1, 0.13))
     static let track = adaptive(light: 0x1C1C28, dark: 0xFFFFFF, alpha: (0.05, 0.06))
     static let hairline = adaptive(light: 0x1C1C28, dark: 0xFFFFFF, alpha: (0.07, 0.08))
     static let edge = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (0.7, 0.1))
     static let important = adaptive(light: 0xE8830C, dark: 0xFFB454)
+
+    /// 卡片：左上偏白，右下带极淡的靛紫，渐变幅度保持在不抢内容的程度。
+    static let card = LinearGradient(colors: [adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (0.86, 0.07)),
+                                              adaptive(light: 0xF0EFFF, dark: 0x8B8CF8, alpha: (0.7, 0.06))],
+                                     startPoint: .topLeading, endPoint: .bottomTrailing)
+    static let cardHover = LinearGradient(colors: [adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (0.98, 0.1)),
+                                                   adaptive(light: 0xEAE8FF, dark: 0x8B8CF8, alpha: (0.9, 0.11))],
+                                          startPoint: .topLeading, endPoint: .bottomTrailing)
+    /// 上沿亮、下沿暗的描边，模拟玻璃受光。
+    static let cardStroke = LinearGradient(colors: [edge, hairline], startPoint: .top, endPoint: .bottom)
+    static let auroraStroke = LinearGradient(colors: [accentCool, accent, accentAlt],
+                                             startPoint: .leading, endPoint: .trailing)
 
     private static func adaptive(light: UInt32, dark: UInt32, alpha: (CGFloat, CGFloat) = (1, 1)) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in

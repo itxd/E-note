@@ -325,35 +325,53 @@ struct TodoComposer: View {
     private var isEmpty: Bool { draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "plus").font(.system(size: 12, weight: .semibold))
-                .foregroundStyle(TodoTheme.gradient)
+        HStack(spacing: 9) {
+            Circle()
+                .strokeBorder(composing ? AnyShapeStyle(TodoTheme.gradient) : AnyShapeStyle(Color.secondary.opacity(0.45)),
+                              style: StrokeStyle(lineWidth: 1.2, dash: [2.2, 2.2]))
+                .frame(width: 16, height: 16)
             TextField("添加一个待办…", text: $draft)
                 .textFieldStyle(.plain)
-                .font(.system(size: 12))
+                .font(.system(size: 12.5))
                 .focused($composing)
                 .onSubmit(add)
-            Button(action: add) {
-                Image(systemName: "arrow.up").font(.system(size: 10, weight: .bold))
-                    .foregroundColor(.white)
-                    .frame(width: 22, height: 22)
-                    .background(Circle().fill(TodoTheme.gradient))
-                    .opacity(isEmpty ? 0.35 : 1)
-                    .contentShape(Circle())
+            ZStack {
+                if isEmpty {
+                    Text("↩").font(.system(size: 10, weight: .semibold, design: .rounded))
+                        .foregroundColor(.secondary)
+                        .frame(width: 22, height: 18)
+                        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(TodoTheme.track))
+                        .overlay(RoundedRectangle(cornerRadius: 5, style: .continuous)
+                            .strokeBorder(TodoTheme.hairline, lineWidth: 0.6))
+                        .transition(.opacity)
+                        .accessibilityHidden(true)
+                } else {
+                    Button(action: add) {
+                        Image(systemName: "arrow.up").font(.system(size: 10.5, weight: .bold))
+                            .foregroundColor(.white)
+                            .frame(width: 26, height: 26)
+                            .background(Circle().fill(TodoTheme.gradient))
+                            .shadow(color: TodoTheme.accentAlt.opacity(0.35), radius: 4, y: 1)
+                            .contentShape(Circle())
+                    }
+                    .buttonStyle(.plain)
+                    .help("添加待办（回车）")
+                    .accessibilityLabel("添加待办")
+                    .transition(.scale(scale: 0.6).combined(with: .opacity))
+                }
             }
-            .buttonStyle(.plain)
-            .disabled(isEmpty)
-            .help("添加待办（回车）")
+            .frame(width: 26, height: 26)
         }
         .padding(.leading, 12)
-        .padding(.trailing, 6)
-        .frame(height: 36)
-        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(TodoTheme.surfaceHover))
-        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
-            .strokeBorder(composing ? AnyShapeStyle(TodoTheme.gradient) : AnyShapeStyle(TodoTheme.hairline),
-                          lineWidth: composing ? 1.2 : 0.8))
-        .shadow(color: accent.opacity(composing ? 0.18 : 0), radius: composing ? 10 : 0, y: 3)
-        .animation(.easeOut(duration: 0.18), value: composing)
+        .padding(.trailing, 7)
+        .frame(height: 40)
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(TodoTheme.cardHover))
+        .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
+            .strokeBorder(TodoTheme.auroraStroke, lineWidth: composing ? 1.2 : 0.8)
+            .opacity(composing ? 0.9 : 0.35))
+        .shadow(color: TodoTheme.accentAlt.opacity(composing ? 0.2 : 0.06), radius: composing ? 14 : 6, y: 4)
+        .animation(.easeOut(duration: 0.2), value: composing)
+        .animation(.spring(response: 0.28, dampingFraction: 0.8), value: isEmpty)
         .padding(.horizontal, 12)
         .padding(.top, 6)
         .padding(.bottom, 12)
@@ -424,14 +442,15 @@ struct TodoRow: View {
         .padding(.trailing, 6)
         .padding(.vertical, 7)
         .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .fill(hovering ? TodoTheme.surfaceHover : TodoTheme.surface))
+            .fill(hovering ? TodoTheme.cardHover : TodoTheme.card))
         .overlay(alignment: .leading) {
             if let marker = marker {
                 Capsule().fill(marker).frame(width: 2.5).padding(.vertical, 10).padding(.leading, 2.5)
             }
         }
         .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .strokeBorder(hovering ? TodoTheme.accent.opacity(0.3) : TodoTheme.hairline, lineWidth: 0.8))
+            .strokeBorder(hovering ? AnyShapeStyle(TodoTheme.accent.opacity(0.3)) : AnyShapeStyle(TodoTheme.cardStroke),
+                          lineWidth: 0.8))
         .shadow(color: TodoTheme.accent.opacity(hovering ? 0.12 : 0), radius: hovering ? 8 : 0, y: 2)
         .animation(.easeOut(duration: 0.15), value: hovering)
         .onHover { hovering = $0 }
