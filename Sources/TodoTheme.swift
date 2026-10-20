@@ -2,18 +2,48 @@ import AppKit
 import SwiftUI
 
 // 作者：韦冬 2220285589@qq.com
-// TODOList 专属松柏绿；深色模式使用更明亮的薄荷绿强调色。
+// 待办清单配色：石墨中性底 + 靛紫渐变强调色；深色模式提亮强调色保证对比度。
 enum TodoTheme {
-    static let accent = adaptive(light: 0x386D63, dark: 0x95CEB9)
-    static let canvas = adaptive(light: 0xEEF4F0, dark: 0x202A26)
-    static let surface = adaptive(light: 0xFAFCFA, dark: 0x2A3630)
+    static let accent = adaptive(light: 0x5B5BD6, dark: 0xA5A8F8)
+    static let accentAlt = adaptive(light: 0x8B5CF6, dark: 0xC9A8FF)
+    static let accentCool = adaptive(light: 0x0EA5E9, dark: 0x7DD3FC)
+    static let gradient = LinearGradient(colors: [accent, accentAlt], startPoint: .topLeading, endPoint: .bottomTrailing)
+    static let ringGradient = AngularGradient(colors: [accentCool, accent, accentAlt, accentCool], center: .center)
 
-    private static func adaptive(light: UInt32, dark: UInt32) -> Color {
+    /// 不透明底色，用于无法使用材质的场景（如离屏预览）。
+    static let canvas = adaptive(light: 0xF4F4F8, dark: 0x16171D)
+    /// 叠在毛玻璃上的色层，透明度较高，只透出少量桌面。
+    static let canvasTint = adaptive(light: 0xF6F6FA, dark: 0x14151A, alpha: (0.78, 0.82))
+    static let surface = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (0.78, 0.055))
+    static let surfaceHover = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (0.96, 0.085))
+    static let raised = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (1, 0.13))
+    static let track = adaptive(light: 0x1C1C28, dark: 0xFFFFFF, alpha: (0.05, 0.06))
+    static let hairline = adaptive(light: 0x1C1C28, dark: 0xFFFFFF, alpha: (0.07, 0.08))
+    static let edge = adaptive(light: 0xFFFFFF, dark: 0xFFFFFF, alpha: (0.7, 0.1))
+    static let important = adaptive(light: 0xE8830C, dark: 0xFFB454)
+
+    private static func adaptive(light: UInt32, dark: UInt32, alpha: (CGFloat, CGFloat) = (1, 1)) -> Color {
         Color(nsColor: NSColor(name: nil) { appearance in
-            let hex = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua ? dark : light
+            let isDark = appearance.bestMatch(from: [.aqua, .darkAqua]) == .darkAqua
+            let hex = isDark ? dark : light
             return NSColor(srgbRed: CGFloat((hex >> 16) & 255) / 255,
                            green: CGFloat((hex >> 8) & 255) / 255,
-                           blue: CGFloat(hex & 255) / 255, alpha: 1)
+                           blue: CGFloat(hex & 255) / 255, alpha: isDark ? alpha.1 : alpha.0)
         })
+    }
+}
+
+/// 毛玻璃 + 色层 + 两团极淡的强调色光晕。
+struct TodoBackdrop: View {
+    var body: some View {
+        ZStack {
+            Rectangle().fill(.regularMaterial)
+            TodoTheme.canvasTint
+            RadialGradient(colors: [TodoTheme.accentAlt.opacity(0.14), .clear],
+                           center: .topTrailing, startRadius: 0, endRadius: 260)
+            RadialGradient(colors: [TodoTheme.accentCool.opacity(0.08), .clear],
+                           center: .topLeading, startRadius: 0, endRadius: 200)
+        }
+        .allowsHitTesting(false)
     }
 }

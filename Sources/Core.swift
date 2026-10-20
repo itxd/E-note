@@ -147,9 +147,10 @@ struct NoteColor: Identifiable, Equatable {
     }
 
     /// 专属色不进入普通便签色盘，保证 TODOList 始终容易辨认。
+    /// 名称是已存数据里的颜色标识，改色不改名，避免触发迁移和云端改写。
     static let todo = NoteColor(name: "松柏绿",
-        paper: Color(red: 0.933, green: 0.957, blue: 0.941),
-        tab: Color(red: 0.220, green: 0.427, blue: 0.388))
+        paper: Color(red: 0.957, green: 0.957, blue: 0.980),
+        tab: Color(red: 0.357, green: 0.357, blue: 0.839))
     static let defaultNames = ["杏砂", "雾紫"]
 
     /// 八色调色板：两种柔和默认色，加六种可手选颜色。

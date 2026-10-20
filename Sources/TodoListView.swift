@@ -52,16 +52,12 @@ struct TodoListView: View {
             : snapshot.items.filter { filter == 0 || (filter == 1 ? !$0.completed : $0.completed) }
         VStack(spacing: 0) {
             heading(snapshot)
-            HStack(spacing: 4) {
+            HStack(spacing: 6) {
                 ViewThatFits(in: .horizontal) {
                     statusPicker(snapshot, compact: false)
                     statusPicker(snapshot, compact: true)
                 }
-                Button { showingFilter = true } label: {
-                    Image(systemName: filtering ? "line.3.horizontal.decrease.circle.fill" : "line.3.horizontal.decrease.circle")
-                        .font(.system(size: 16)).frame(width: 28, height: 28).contentShape(Rectangle())
-                }.buttonStyle(.plain).help("按时效、标签筛选").accessibilityLabel("筛选")
-                    .popover(isPresented: $showingFilter) { filterMenu(snapshot.boundTags) }
+                filterButton(snapshot.boundTags)
             }
             .padding(.horizontal, 12)
             .padding(.bottom, 8)
@@ -89,6 +85,7 @@ struct TodoListView: View {
                     }
                 }
                 .padding(.horizontal, 12)
+                .padding(.top, 2)
                 .padding(.bottom, 8)
             }
             TodoComposer { text in
@@ -100,7 +97,7 @@ struct TodoListView: View {
                 return store.lastSaveSucceeded
             }.id(epoch)
         }
-        .background(TodoTheme.canvas)
+        .background(TodoBackdrop())
         .tint(accent)
         .onChange(of: snapshot.boundTags.map { $0.id }) { ids in
             if let selected = selectedTagID, !ids.contains(selected) { selectedTagID = nil }
@@ -120,26 +117,44 @@ struct TodoListView: View {
     }
 
     private func emptyState(isEmpty: Bool) -> some View {
-        VStack(spacing: 8) {
-            Image(systemName: isEmpty ? "tray" : "checkmark.seal")
-                .font(.system(size: 26, weight: .light))
-                .foregroundColor(accent.opacity(0.7))
+        VStack(spacing: 10) {
+            Image(systemName: filtering ? "line.3.horizontal.decrease" : (isEmpty ? "sparkles" : "checkmark.seal"))
+                .font(.system(size: 22, weight: .light))
+                .foregroundStyle(TodoTheme.gradient)
+                .frame(width: 48, height: 48)
+                .background(Circle().fill(accent.opacity(0.08)))
             Text(filtering ? "没有符合筛选条件的任务" : (isEmpty ? "把想到的事，先放在这里" : "这里的任务都处理好了"))
                 .font(.system(size: 12))
                 .foregroundColor(.secondary)
         }
         .frame(maxWidth: .infinity)
-        .padding(.vertical, 24)
+        .padding(.vertical, 32)
     }
 
     private func statusPicker(_ snapshot: TodoSnapshot, compact: Bool) -> some View {
         let count = snapshot.items.count
-        return Picker("任务筛选", selection: $filter) {
-            Text(compact ? "全部" : "全部 \(count)").tag(0)
-            Text(compact ? "待办" : "待完成 \(count - snapshot.done)").tag(1)
-            Text(compact ? "完成" : "已完成 \(snapshot.done)").tag(2)
-            Text(compact ? "归档" : "归档 \(snapshot.archived.count)").tag(3)
-        }.pickerStyle(.segmented).labelsHidden()
+        return TodoSegments(selection: $filter, options: [
+            ("全部", compact ? nil : count),
+            (compact ? "待办" : "待完成", compact ? nil : count - snapshot.done),
+            (compact ? "完成" : "已完成", compact ? nil : snapshot.done),
+            ("归档", compact ? nil : snapshot.archived.count),
+        ])
+    }
+
+    private func filterButton(_ boundTags: [TodoTag]) -> some View {
+        Button { showingFilter = true } label: {
+            Image(systemName: "line.3.horizontal.decrease")
+                .font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(filtering ? AnyShapeStyle(TodoTheme.gradient) : AnyShapeStyle(Color.secondary))
+                .frame(width: 28, height: 28)
+                .background(RoundedRectangle(cornerRadius: 9, style: .continuous)
+                    .fill(filtering ? accent.opacity(0.12) : TodoTheme.track))
+                .overlay(alignment: .topTrailing) {
+                    if filtering { Circle().fill(TodoTheme.gradient).frame(width: 6, height: 6).offset(x: -4, y: 4) }
+                }
+                .contentShape(Rectangle())
+        }.buttonStyle(.plain).help("按时效、标签筛选").accessibilityLabel("筛选")
+            .popover(isPresented: $showingFilter) { filterMenu(boundTags) }
     }
 
     private func activeFilters(_ tags: [TodoTag]) -> some View {
@@ -148,7 +163,7 @@ struct TodoListView: View {
                 filterChip(age.title, systemImage: "clock") { age = .all }
             }
             if let id = selectedTagID, let tag = tags.first(where: { $0.id == id }) {
-                filterChip(tag.name, systemImage: "tag.fill") { selectedTagID = nil }
+                filterChip(tag.name, systemImage: "number") { selectedTagID = nil }
             }
             Spacer(minLength: 0)
         }
@@ -165,31 +180,37 @@ struct TodoListView: View {
             .font(.system(size: 10, weight: .medium))
             .foregroundColor(accent)
             .padding(.horizontal, 8).padding(.vertical, 4)
-            .background(accent.opacity(0.1), in: Capsule())
+            .background(Capsule().fill(accent.opacity(0.1)))
+            .overlay(Capsule().strokeBorder(accent.opacity(0.18), lineWidth: 0.6))
             .contentShape(Capsule())
         }.buttonStyle(.plain).help("清除筛选：\(title)")
     }
 
     private func filterMenu(_ boundTags: [TodoTag]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text("时效").font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
+        VStack(alignment: .leading, spacing: 2) {
+            menuHeader("时效")
             ForEach(TodoAge.allCases) { option in
                 filterOption(option.title, systemImage: "clock", selected: age == option) { age = option }
             }
             Divider().padding(.vertical, 6)
-            Text("标签").font(.system(size: 11, weight: .semibold)).foregroundColor(.secondary)
-            filterOption("全部标签", systemImage: "tag", selected: selectedTagID == nil) { selectedTagID = nil }
+            menuHeader("标签")
+            filterOption("全部标签", systemImage: "number", selected: selectedTagID == nil) { selectedTagID = nil }
             if boundTags.isEmpty {
-                Text("任务还没有绑定标签").font(.system(size: 11)).foregroundColor(.secondary).padding(6)
+                Text("任务还没有绑定标签").font(.system(size: 11)).foregroundColor(.secondary).padding(8)
             }
             ScrollView {
                 VStack(spacing: 2) {
                     ForEach(boundTags) { tag in
-                        filterOption(tag.name, systemImage: "tag.fill", selected: selectedTagID == tag.id) { selectedTagID = tag.id }
+                        filterOption(tag.name, systemImage: "number", selected: selectedTagID == tag.id) { selectedTagID = tag.id }
                     }
                 }
             }.frame(maxHeight: 200)
-        }.padding(12).frame(width: 240)
+        }.padding(10).frame(width: 236)
+    }
+
+    private func menuHeader(_ title: String) -> some View {
+        Text(title).font(.system(size: 10, weight: .semibold)).foregroundColor(.secondary)
+            .padding(.horizontal, 8).padding(.bottom, 2)
     }
 
     private func filterOption(_ title: String, systemImage: String, selected: Bool,
@@ -198,50 +219,100 @@ struct TodoListView: View {
             HStack {
                 Label(title, systemImage: systemImage).lineLimit(1)
                 Spacer()
-                if selected { Image(systemName: "checkmark").foregroundColor(accent) }
+                if selected { Image(systemName: "checkmark").font(.system(size: 10, weight: .bold)).foregroundColor(accent) }
             }
             .font(.system(size: 12))
             .padding(.horizontal, 8).padding(.vertical, 5)
-            .background(selected ? accent.opacity(0.1) : Color.clear, in: RoundedRectangle(cornerRadius: 6))
+            .background(RoundedRectangle(cornerRadius: 7, style: .continuous).fill(selected ? accent.opacity(0.1) : Color.clear))
             .contentShape(Rectangle())
         }.buttonStyle(.plain)
     }
 
     private func heading(_ snapshot: TodoSnapshot) -> some View {
         let total = snapshot.items.count, done = snapshot.done
+        let progress = total == 0 ? 0 : CGFloat(done) / CGFloat(total)
         return HStack(spacing: 10) {
             ZStack {
-                Circle().stroke(accent.opacity(0.12), lineWidth: 2.5)
-                Circle().trim(from: 0, to: total == 0 ? 0 : CGFloat(done) / CGFloat(total))
-                    .stroke(accent, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                Circle().stroke(TodoTheme.track, lineWidth: 3)
+                Circle().trim(from: 0, to: progress)
+                    .stroke(TodoTheme.ringGradient, style: StrokeStyle(lineWidth: 3, lineCap: .round))
                     .rotationEffect(.degrees(-90))
-                Image(systemName: "checklist").font(.system(size: 12, weight: .semibold))
-                    .foregroundColor(accent)
+                    .shadow(color: TodoTheme.accentAlt.opacity(progress > 0 ? 0.35 : 0), radius: 3)
+                Image(systemName: "checklist").font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(TodoTheme.gradient)
             }
             .frame(width: 30, height: 30)
+            .animation(.easeOut(duration: 0.35), value: progress)
             .accessibilityLabel("已完成 \(done) 项，共 \(total) 项")
-            VStack(alignment: .leading, spacing: 1) {
-                Text(NoteRecord.todoListTitle).font(.system(size: 16, weight: .bold, design: .rounded)).lineLimit(1).minimumScaleFactor(0.7)
-                Text(total == 0 ? "每一件小事，都算数" : "已完成 \(done) / \(total)")
-                    .font(.system(size: 10)).foregroundColor(.secondary).monospacedDigit()
+            VStack(alignment: .leading, spacing: 2) {
+                Text(NoteRecord.todoListTitle).font(.system(size: 15, weight: .semibold)).tracking(-0.2)
+                    .lineLimit(1).minimumScaleFactor(0.7)
+                Text(total == 0 ? "每一件小事，都算数" : "已完成 \(done) / \(total) · \(Int((progress * 100).rounded()))%")
+                    .font(.system(size: 10, weight: .medium)).foregroundColor(.secondary).monospacedDigit()
             }
             Spacer(minLength: 2)
-            Button { TagWindowController.shared.show() } label: {
-                Image(systemName: "tag").frame(width: 24, height: 24)
-            }.buttonStyle(.plain).foregroundColor(.secondary).help("标签管理").accessibilityLabel("标签管理")
-            Button { AppDelegate.shared?.showSettings() } label: {
-                Image(systemName: "gearshape").frame(width: 24, height: 24)
-            }.buttonStyle(.plain).foregroundColor(.secondary).help("设置").accessibilityLabel("设置")
-            if let onClose = onClose {
-                Button(action: onClose) { Image(systemName: "xmark").font(.system(size: 10, weight: .semibold)) }
-                    .buttonStyle(.plain)
-                    .foregroundColor(.secondary)
-                    .help("收起待办清单")
+            HStack(spacing: 0) {
+                headerButton("number", help: "标签管理") { TagWindowController.shared.show() }
+                headerButton("gearshape", help: "设置") { AppDelegate.shared?.showSettings() }
+                if let onClose = onClose { headerButton("xmark", help: "收起待办清单", action: onClose) }
             }
+            .padding(2)
+            .background(Capsule().fill(TodoTheme.track))
         }
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 10)
+    }
+
+    private func headerButton(_ systemImage: String, help: String, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage).font(.system(size: 10.5, weight: .semibold))
+                .frame(width: 24, height: 22).contentShape(Rectangle())
+        }.buttonStyle(.plain).foregroundColor(.secondary).help(help).accessibilityLabel(help)
+    }
+}
+
+/// 自绘分段控件：滑块随选中项移动，替代系统分段控件。
+private struct TodoSegments: View {
+    @Binding var selection: Int
+    let options: [(title: String, count: Int?)]
+    @Namespace private var namespace
+
+    var body: some View {
+        HStack(spacing: 2) {
+            ForEach(options.indices, id: \.self) { index in
+                let selected = selection == index
+                Button {
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.85)) { selection = index }
+                } label: {
+                    HStack(spacing: 3) {
+                        Text(options[index].title)
+                        if let count = options[index].count {
+                            Text("\(count)").monospacedDigit()
+                                .foregroundColor(selected ? TodoTheme.accent : Color.secondary.opacity(0.75))
+                        }
+                    }
+                    .font(.system(size: 11, weight: selected ? .semibold : .medium))
+                    .foregroundColor(selected ? .primary : .secondary)
+                    .lineLimit(1).fixedSize()
+                    .padding(.horizontal, 7)
+                    .frame(maxWidth: .infinity, minHeight: 24)
+                    .background {
+                        if selected {
+                            RoundedRectangle(cornerRadius: 7, style: .continuous)
+                                .fill(TodoTheme.raised)
+                                .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+                                .matchedGeometryEffect(id: "segment", in: namespace)
+                        }
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(selected ? .isSelected : [])
+            }
+        }
+        .padding(2)
+        .background(RoundedRectangle(cornerRadius: 9, style: .continuous).fill(TodoTheme.track))
     }
 }
 
@@ -251,30 +322,41 @@ struct TodoComposer: View {
     @State private var draft = ""
     @FocusState private var composing: Bool
     private let accent = TodoTheme.accent
+    private var isEmpty: Bool { draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
 
     var body: some View {
         HStack(spacing: 8) {
-            Image(systemName: "plus.circle.fill").foregroundColor(accent)
+            Image(systemName: "plus").font(.system(size: 12, weight: .semibold))
+                .foregroundStyle(TodoTheme.gradient)
             TextField("添加一个待办…", text: $draft)
                 .textFieldStyle(.plain)
                 .font(.system(size: 12))
                 .focused($composing)
                 .onSubmit(add)
             Button(action: add) {
-                Image(systemName: "arrow.up").font(.system(size: 11, weight: .semibold))
+                Image(systemName: "arrow.up").font(.system(size: 10, weight: .bold))
+                    .foregroundColor(.white)
                     .frame(width: 22, height: 22)
+                    .background(Circle().fill(TodoTheme.gradient))
+                    .opacity(isEmpty ? 0.35 : 1)
+                    .contentShape(Circle())
             }
-            .buttonStyle(.borderedProminent)
-            .disabled(draft.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            .buttonStyle(.plain)
+            .disabled(isEmpty)
             .help("添加待办（回车）")
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 7)
-        .background(TodoTheme.surface, in: RoundedRectangle(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(accent.opacity(composing ? 0.35 : 0.12), lineWidth: 1))
+        .padding(.leading, 12)
+        .padding(.trailing, 6)
+        .frame(height: 36)
+        .background(RoundedRectangle(cornerRadius: 12, style: .continuous).fill(TodoTheme.surfaceHover))
+        .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous)
+            .strokeBorder(composing ? AnyShapeStyle(TodoTheme.gradient) : AnyShapeStyle(TodoTheme.hairline),
+                          lineWidth: composing ? 1.2 : 0.8))
+        .shadow(color: accent.opacity(composing ? 0.18 : 0), radius: composing ? 10 : 0, y: 3)
+        .animation(.easeOut(duration: 0.18), value: composing)
         .padding(.horizontal, 12)
         .padding(.top, 6)
-        .padding(.bottom, 10)
+        .padding(.bottom, 12)
     }
 
     private func add() {
@@ -305,21 +387,18 @@ struct TodoRow: View {
     private var store: NoteStore { .shared }
     private var dueSoon: Bool { watcher.upcomingTaskIDs.contains(item.id) }
     private var important: Bool { item.priority == "high" }
-    private var accent: Color { item.overdue ? .red : (dueSoon || important ? .orange : TodoTheme.accent) }
-    private var dueColor: Color { item.overdue ? .red : (dueSoon ? .orange : TodoTheme.accent) }
+    private var dueColor: Color { item.overdue ? .red : (dueSoon ? TodoTheme.important : TodoTheme.accent) }
+    /// 左侧细条只标记需要注意的任务：逾期为红，重要或即将到期为橙。
+    private var marker: Color? {
+        guard !item.completed else { return nil }
+        if item.overdue { return .red }
+        return important || dueSoon ? TodoTheme.important : nil
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Button(action: toggle) {
-                Image(systemName: item.completed ? "checkmark.circle.fill" : "circle")
-                    .font(.system(size: 17, weight: .light))
-                    .foregroundColor(item.completed ? TodoTheme.accent : accent.opacity(0.8))
-                    .frame(width: 20, height: 20)
-                    .contentShape(Rectangle())
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(item.completed ? "标为待完成：\(item.text)" : "完成：\(item.text)")
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .top, spacing: 9) {
+            checkbox
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(spacing: 6) {
                     ViewThatFits(in: .horizontal) {
                         leadingBar(.full)
@@ -331,21 +410,30 @@ struct TodoRow: View {
                 }
                 .frame(minHeight: 20)
                 Text(item.text)
-                    .font(.system(size: 12, weight: .medium))
-                    .strikethrough(item.completed)
+                    .font(.system(size: 12.5, weight: .medium))
+                    .strikethrough(item.completed, color: .secondary)
                     .foregroundColor(item.completed ? .secondary : .primary)
+                    .lineSpacing(1.5)
                     .lineLimit(4)
                     .fixedSize(horizontal: false, vertical: true)
                     .help(item.text)
                 if !tags.isEmpty { tagStrip }
             }
         }
-        .padding(.leading, 8)
+        .padding(.leading, 10)
         .padding(.trailing, 6)
-        .padding(.vertical, 6)
-        .background(TodoTheme.surface, in: RoundedRectangle(cornerRadius: 9))
-        .overlay(RoundedRectangle(cornerRadius: 9)
-            .stroke(hovering ? TodoTheme.accent.opacity(0.28) : Color.primary.opacity(0.055), lineWidth: 1))
+        .padding(.vertical, 7)
+        .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
+            .fill(hovering ? TodoTheme.surfaceHover : TodoTheme.surface))
+        .overlay(alignment: .leading) {
+            if let marker = marker {
+                Capsule().fill(marker).frame(width: 2.5).padding(.vertical, 10).padding(.leading, 2.5)
+            }
+        }
+        .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
+            .strokeBorder(hovering ? TodoTheme.accent.opacity(0.3) : TodoTheme.hairline, lineWidth: 0.8))
+        .shadow(color: TodoTheme.accent.opacity(hovering ? 0.12 : 0), radius: hovering ? 8 : 0, y: 2)
+        .animation(.easeOut(duration: 0.15), value: hovering)
         .onHover { hovering = $0 }
         .confirmationDialog("删除 \(item.code)？", isPresented: $confirmingDelete) {
             Button("删除任务", role: .destructive) {
@@ -360,13 +448,34 @@ struct TodoRow: View {
         } message: { Text(errorMessage ?? "") }
     }
 
+    private var checkbox: some View {
+        Button(action: toggle) {
+            ZStack {
+                if item.completed {
+                    Circle().fill(TodoTheme.gradient)
+                    Image(systemName: "checkmark").font(.system(size: 8, weight: .heavy)).foregroundColor(.white)
+                } else {
+                    Circle().strokeBorder(marker ?? (hovering ? TodoTheme.accent : Color.secondary.opacity(0.5)),
+                                          lineWidth: 1.3)
+                }
+            }
+            .frame(width: 16, height: 16)
+            .frame(width: 20, height: 20)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(item.completed ? "标为待完成：\(item.text)" : "完成：\(item.text)")
+    }
+
     private enum LabelStyle { case full, short, icon }
 
     private func leadingBar(_ style: LabelStyle) -> some View {
-        HStack(spacing: 8) {
+        HStack(spacing: 4) {
             Text(item.code)
                 .font(.system(size: 9, weight: .medium, design: .monospaced))
                 .foregroundColor(.secondary)
+                .padding(.horizontal, 4).padding(.vertical, 1.5)
+                .background(RoundedRectangle(cornerRadius: 4, style: .continuous).fill(TodoTheme.track))
                 .fixedSize()
                 .contextMenu {
                     Button("复制任务编号") {
@@ -378,44 +487,49 @@ struct TodoRow: View {
                 dueButton(style)
                 importanceButton(style)
             } else {
-                if important { Image(systemName: "flag.fill").foregroundColor(.orange).help("重要") }
-                if let due = item.dueAt { dueText(due).foregroundColor(item.overdue ? .red : .secondary) }
+                if important { chip(Image(systemName: "flag.fill"), nil, tint: TodoTheme.important, active: true).help("重要") }
+                if let due = item.dueAt {
+                    chip(Image(systemName: "calendar"), dueText(due), tint: item.overdue ? .red : .secondary, active: false)
+                }
             }
         }
-        .font(.system(size: 10))
     }
 
-    private func dueText(_ due: Date) -> some View {
-        Text(due, format: .dateTime.month(.defaultDigits).day().hour().minute()).monospacedDigit().lineLimit(1)
+    private func dueText(_ due: Date) -> Text {
+        Text(due, format: .dateTime.month(.defaultDigits).day().hour().minute())
+    }
+
+    private func chip(_ icon: Image, _ text: Text?, tint: Color, active: Bool) -> some View {
+        HStack(spacing: 3) {
+            icon
+            if let text = text { text.monospacedDigit().lineLimit(1) }
+        }
+        .font(.system(size: 10, weight: .medium))
+        .foregroundColor(active ? tint : .secondary)
+        .padding(.horizontal, 5).padding(.vertical, 2)
+        .background(RoundedRectangle(cornerRadius: 5, style: .continuous).fill(active ? tint.opacity(0.12) : Color.clear))
+        .fixedSize()
+        .contentShape(Rectangle())
     }
 
     private func dueButton(_ style: LabelStyle) -> some View {
-        Button(action: editDate) {
-            HStack(spacing: 3) {
-                Image(systemName: "calendar")
-                if let due = item.dueAt {
-                    if style != .icon { dueText(due) }
-                } else if style != .icon {
-                    Text(style == .full ? "设置时间" : "时间")
-                }
-            }
-            .fixedSize().padding(.vertical, 2).contentShape(Rectangle())
-        }.buttonStyle(.plain).foregroundColor(item.dueAt == nil ? .secondary : dueColor)
+        let label: Text? = style == .icon ? nil
+            : item.dueAt.map(dueText) ?? Text(style == .full ? "设置时间" : "时间")
+        return Button(action: editDate) {
+            chip(Image(systemName: "calendar"), label, tint: dueColor, active: item.dueAt != nil)
+        }.buttonStyle(.plain)
             .help(item.dueAt == nil ? "设置到期时间" : "修改或清除到期时间").accessibilityLabel("设置时间：\(item.text)")
     }
 
     private func importanceButton(_ style: LabelStyle) -> some View {
-        Button {
+        let label: Text? = style == .icon ? nil
+            : Text(style == .full ? (important ? "取消重要" : "设为重要") : "重要")
+        return Button {
             do { try store.editTodo(id: item.id, epoch: epoch, change: .toggleImportance) }
             catch { errorMessage = error.localizedDescription }
         } label: {
-            HStack(spacing: 3) {
-                Image(systemName: important ? "flag.fill" : "flag")
-                if style == .full { Text(important ? "取消重要" : "设为重要") }
-                if style == .short { Text("重要") }
-            }
-            .fixedSize().padding(.vertical, 2).contentShape(Rectangle())
-        }.buttonStyle(.plain).foregroundColor(important ? .orange : .secondary)
+            chip(Image(systemName: important ? "flag.fill" : "flag"), label, tint: TodoTheme.important, active: important)
+        }.buttonStyle(.plain)
             .help(important ? "取消重要任务" : "设为重要任务")
             .accessibilityLabel("\(important ? "取消重要任务" : "设为重要任务")：\(item.text)")
     }
@@ -423,7 +537,7 @@ struct TodoRow: View {
     private var trailingActions: some View {
         let showTagButton = hovering || choosingTags
         return HStack(spacing: 0) {
-            iconButton("tag", help: "添加或修改绑定标签") { choosingTags = true }
+            iconButton("number", help: "添加或修改绑定标签") { choosingTags = true }
                 .opacity(showTagButton ? 1 : 0)
                 .allowsHitTesting(showTagButton)
                 .accessibilityHidden(!showTagButton)
@@ -436,7 +550,7 @@ struct TodoRow: View {
                       let current = store.todo(identifier: item.id.uuidString) else { return }
                 store.setTodoArchived(id: item.id, archived: !current.isArchived)
             }
-            iconButton(hasLinkedNote ? "doc.text" : "square.and.pencil",
+            iconButton(hasLinkedNote ? "doc.text.fill" : "square.and.pencil",
                        help: hasLinkedNote ? "查看关联便签 · \(item.code)" : "创建关联便签 · \(item.code)",
                        tint: hasLinkedNote ? TodoTheme.accent : nil) {
                 do {
@@ -450,14 +564,14 @@ struct TodoRow: View {
                     .accessibilityLabel("删除任务：\(item.text)")
             }
         }
-        .opacity(hovering ? 1 : 0.6)
+        .opacity(hovering ? 1 : 0.5)
     }
 
     private func iconButton(_ systemImage: String, help: String, tint: Color? = nil,
                             action: @escaping () -> Void) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 11))
+                .font(.system(size: 10.5, weight: .medium))
                 .frame(width: 20, height: 20)
                 .contentShape(Rectangle())
         }.buttonStyle(.plain).foregroundColor(tint ?? .secondary).help(help)
@@ -468,10 +582,10 @@ struct TodoRow: View {
             HStack(spacing: 4) {
                 ForEach(tags) { tag in
                     Button { inspectingTag = tag } label: {
-                        Label(tag.name, systemImage: "tag.fill").font(.system(size: 9.5))
+                        Text("#\(tag.name)").font(.system(size: 10, weight: .medium))
                             .foregroundColor(TodoTheme.accent)
                             .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(TodoTheme.accent.opacity(0.1), in: Capsule())
+                            .background(Capsule().fill(TodoTheme.accent.opacity(0.09)))
                             .contentShape(Capsule())
                     }.buttonStyle(.plain)
                 }
@@ -564,7 +678,8 @@ private struct TodoEditorButtonStyle: ButtonStyle {
         configuration.label.font(.system(size: 12, weight: .medium))
             .foregroundColor(prominent ? .white : .primary)
             .padding(.horizontal, 12).padding(.vertical, 7)
-            .background(prominent ? TodoTheme.accent : TodoTheme.accent.opacity(0.1), in: RoundedRectangle(cornerRadius: 7))
+            .background(prominent ? AnyShapeStyle(TodoTheme.gradient) : AnyShapeStyle(TodoTheme.accent.opacity(0.1)),
+                        in: RoundedRectangle(cornerRadius: 8, style: .continuous))
             .opacity(enabled ? (configuration.isPressed ? 0.75 : 1) : 0.45)
     }
 }
