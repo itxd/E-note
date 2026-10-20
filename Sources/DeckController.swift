@@ -85,8 +85,8 @@ final class DeckController: NSObject, ObservableObject {
     /// 展开便签的尺寸
     var noteHeight: CGFloat {
         let isTodo = expandedID.flatMap { NoteStore.shared.note(id: $0) }?.isTodoList == true
-        // TODO 卡片需要给筛选与输入框留空间，小尺寸下也能完整显示至少一项。
-        let base = min(max((isTodo ? 340 : 300) * settings.deckScale, isTodo ? 260 : 200), screen.frame.height - 120)
+        // TODO 卡片按两倍高度展示，一次能看到更多任务；屏幕不够高时仍由下面的上限收住。
+        let base = min(max((isTodo ? 680 : 300) * settings.deckScale, isTodo ? 520 : 200), screen.frame.height - 120)
         return min(base * (enlarged ? 2.5 : 1), screen.visibleFrame.height - 16)
     }
 
