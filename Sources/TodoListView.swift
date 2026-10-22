@@ -33,7 +33,8 @@ private struct TodoSnapshot {
 // 作者：韦冬 2220285589@qq.com
 struct TodoListView: View {
     @ObservedObject var store = NoteStore.shared
-    @State private var filter = 0
+    /// 0 全部 · 1 待完成 · 2 已完成 · 3 归档；默认先看待完成。
+    @State private var filter = 1
     @State private var selectedTagID: UUID?
     @State private var age = TodoAge.all
     @State private var showingFilter = false
