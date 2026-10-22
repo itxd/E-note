@@ -67,7 +67,7 @@ struct DeckRootView: View {
             .frame(width: deck.cardWidth, height: deck.noteHeight)
         let card = Group {
             if note.isTodoList {
-                TodoListView(onClose: { deck.collapse() })
+                TodoListView(deck: deck, onClose: { deck.collapse() })
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(TodoTheme.edge, lineWidth: 0.8))
@@ -246,7 +246,8 @@ struct GutterTab: View {
                 titleHeight: deck.noteHeight, verticalTitle: true)
             .contentShape(Rectangle())
             .onTapGesture(count: 2) { deck.toggleEnlarged() }
-            .help(deck.enlarged ? "双击恢复原大小" : "双击放大至 2.5 倍")
+            .modifier(CardDragHandle(deck: deck))
+            .help(deck.enlarged ? "拖动可移动卡片 · 双击恢复原大小" : "拖动可移动卡片 · 双击放大至 2.5 倍")
             .overlay(
                 DashedLine()
                     .stroke(Color.secondary.opacity(0.6), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
@@ -386,6 +387,7 @@ struct NoteCardView: View {
         }
         .padding(.horizontal, 12)
         .padding(.vertical, 9)
+        .modifier(CardDragHandle(deck: deck))
     }
 
     private func insertTask() {
@@ -493,6 +495,19 @@ struct NoteCardView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+}
+
+/// 按住卡片标题栏或侧边标签拖动展开的卡片；收起后回到屏幕边缘。
+struct CardDragHandle: ViewModifier {
+    weak var deck: DeckController?
+
+    func body(content: Content) -> some View {
+        content
+            .contentShape(Rectangle())
+            .gesture(DragGesture(minimumDistance: 3)
+                .onChanged { _ in deck?.cardDragChanged() }
+                .onEnded { _ in deck?.cardDragEnded() })
     }
 }
 

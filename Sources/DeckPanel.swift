@@ -8,6 +8,9 @@ import SwiftUI
 //    (acceptsFirstMouse(for:) 是 NSView 的方法,在 hosting view 上覆盖)。
 
 final class DeckPanel: NSPanel {
+    /// 面板收到按键时通知 deck，用于顺延自动收起。
+    var onKeyDown: (() -> Void)?
+
     override var canBecomeKey: Bool { true }
     override var canBecomeMain: Bool { true }
     override var isExcludedFromWindowsMenu: Bool {
@@ -31,6 +34,11 @@ final class DeckPanel: NSPanel {
         hasShadow = true
         animationBehavior = .none
         collectionBehavior = [.canJoinAllSpaces, .ignoresCycle, .fullScreenAuxiliary]
+    }
+
+    override func sendEvent(_ event: NSEvent) {
+        if event.type == .keyDown { onKeyDown?() }
+        super.sendEvent(event)
     }
 }
 

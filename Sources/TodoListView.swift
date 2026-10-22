@@ -41,6 +41,8 @@ struct TodoListView: View {
     @State private var editing: TodoEditSession?
     @State private var editingDate: TodoEditSession?
     @State private var epoch = LocalProfile.epoch
+    /// 在 deck 中展开时可拖动标题栏移动卡片；资料库窗口里为 nil。
+    weak var deck: DeckController? = nil
     var onClose: (() -> Void)? = nil
     var onOpenNote: (UUID) -> Void = { AppDelegate.shared?.openLinkedNote($0) }
 
@@ -265,6 +267,7 @@ struct TodoListView: View {
         .padding(.horizontal, 14)
         .padding(.top, 12)
         .padding(.bottom, 10)
+        .modifier(CardDragHandle(deck: deck))
     }
 
     private func headerButton(_ systemImage: String, help: String, action: @escaping () -> Void) -> some View {

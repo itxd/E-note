@@ -31,6 +31,13 @@ final class DeckController: NSObject, ObservableObject {
     /// 是否由 TODO 提醒探出；解决后只收起自动探出的标签，不关闭用户正在看的卡片。
     private var reminderPeekActive = false
 
+    /// 展开的卡片被拖离停靠位置后的偏移(屏幕坐标)；收起时归零，下次从边缘展开。
+    private var cardOffset = CGPoint.zero
+    private var cardDragStart: (mouse: NSPoint, offset: CGPoint)?
+
+    /// 鼠标离开展开的卡片后，多久没有操作就自动收起。
+    private static let idleCollapseDelay: TimeInterval = 5
+
     // ⌥ 拖动 pill 的临时状态
     private var dragStartOffset: CGFloat = 0
     private var provisionalOffset: CGFloat?
@@ -51,6 +58,7 @@ final class DeckController: NSObject, ObservableObject {
         super.init()
 
         panel.contentView = FirstMouseHostingView(rootView: DeckRootView(deck: self))
+        panel.onKeyDown = { [weak self] in self?.noteActivity() }
         triggerPanel.contentView = FirstMouseHostingView(rootView: TriggerView(deck: self))
         for v in [panel.contentView, triggerPanel.contentView].compactMap({ $0 }) {
             v.autoresizingMask = [.width, .height]
@@ -187,6 +195,17 @@ final class DeckController: NSObject, ObservableObject {
     }
 
     func frameForCurrentState() -> NSRect {
+        let docked = dockedFrame()
+        guard state == .expanded, cardOffset != .zero else { return docked }
+        // 拖动后的卡片整体留在可见区域内。
+        let bounds = screen.visibleFrame
+        var frame = docked.offsetBy(dx: cardOffset.x, dy: cardOffset.y)
+        frame.origin.x = max(min(frame.minX, bounds.maxX - frame.width), bounds.minX)
+        frame.origin.y = min(max(frame.minY, bounds.minY), bounds.maxY - frame.height)
+        return frame
+    }
+
+    private func dockedFrame() -> NSRect {
         let w = currentWidth
         let h = panelHeight
         let x = edgeRight ? screen.frame.maxX - w : screen.frame.minX
@@ -279,14 +298,38 @@ final class DeckController: NSObject, ObservableObject {
         DispatchQueue.main.asyncAfter(deadline: .now() + 2, execute: work)
     }
 
+    /// 鼠标离开后计时；待办清单同样参与，置顶便签和有逾期提醒的卡片常驻。
     private func scheduleIdle() {
         cancelIdleWork()
-        guard let id = expandedID, let note = NoteStore.shared.note(id: id), !note.isPinned else { return }
+        guard let id = expandedID, let note = NoteStore.shared.note(id: id),
+              note.isTodoList || !note.isPinned else { return }
         // overdue 便签常驻:空闲也不收起
         guard !OverdueWatcher.shared.isOverdue(id) else { return }
-        let work = DispatchWorkItem { [weak self] in self?.collapse() }
+        let work = DispatchWorkItem { [weak self] in self?.collapseIfIdle() }
         idleWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 60, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.idleCollapseDelay, execute: work)
+    }
+
+    private func collapseIfIdle() {
+        idleWork = nil
+        guard state == .expanded, !isHovering else { return }
+        // 拖动中、弹出框或对话框打开时(鼠标常在卡片外)顺延，不打断编辑。
+        if cardDragStart != nil || hasOpenPopup {
+            scheduleIdle()
+            return
+        }
+        collapse()
+    }
+
+    private var hasOpenPopup: Bool {
+        panel.attachedSheet != nil || (panel.childWindows ?? []).contains { $0.isVisible }
+            || DueDatePickerController.shared.isShowing
+    }
+
+    /// 鼠标在卡片外继续打字时，重新开始空闲计时。
+    private func noteActivity() {
+        guard state == .expanded, !isHovering, idleWork != nil else { return }
+        scheduleIdle()
     }
 
     func expand(_ note: NoteRecord, focus: Bool = true) {
@@ -323,6 +366,8 @@ final class DeckController: NSObject, ObservableObject {
         cancelFanWork()
         cancelIdleWork()
         cancelHoverTabWork()
+        cardOffset = .zero
+        cardDragStart = nil
         showFind = false
         FindState.shared.reset()
         EditorRegistry.shared.editor(for: expandedID ?? UUID())?.clearHighlights()
@@ -398,6 +443,28 @@ final class DeckController: NSObject, ObservableObject {
     func newNote() {
         let note = NoteStore.shared.create()
         expand(note)
+    }
+
+    // MARK: 拖动展开的卡片
+
+    /// 按鼠标的屏幕位置计算：面板随拖动移动，手势自身的坐标系不可靠。
+    func cardDragChanged() {
+        guard state == .expanded else { return }
+        let mouse = NSEvent.mouseLocation
+        let start = cardDragStart ?? (mouse: mouse, offset: cardOffset)
+        cardDragStart = start
+        cardOffset = CGPoint(x: start.offset.x + mouse.x - start.mouse.x,
+                             y: start.offset.y + mouse.y - start.mouse.y)
+        panel.setFrame(frameForCurrentState(), display: true)
+    }
+
+    func cardDragEnded() {
+        guard cardDragStart != nil else { return }
+        cardDragStart = nil
+        guard state == .expanded else { return }
+        // 偏移收敛到被可见区域限制后的实际位置，下次拖动不会先“吃掉”越界的距离。
+        let docked = dockedFrame()
+        cardOffset = CGPoint(x: panel.frame.minX - docked.minX, y: panel.frame.minY - docked.minY)
     }
 
     // MARK: ⌥ 拖动 pill

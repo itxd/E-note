@@ -629,6 +629,8 @@ final class DueDatePickerController {
         p.makeKey()
     }
 
+    var isShowing: Bool { panel?.isVisible == true }
+
     func close() {
         panel?.orderOut(nil)
         panel = nil
