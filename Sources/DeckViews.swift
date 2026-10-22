@@ -71,7 +71,7 @@ struct DeckRootView: View {
                     .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
                         .strokeBorder(TodoTheme.edge, lineWidth: 0.8))
-                    .shadow(color: .black.opacity(0.18), radius: 14, y: 6)
+                    .background(CardShadow(cornerRadius: 14, opacity: 0.18, radius: 14, y: 6))
             } else {
                 NoteCardView(deck: deck, note: note)
             }
@@ -312,7 +312,6 @@ struct NoteCardView: View {
     @ObservedObject var store = NoteStore.shared
     @ObservedObject var find = FindState.shared
     @ObservedObject var taskEdit = TaskEditState.shared
-    @State private var now = Date()
 
     private var color: NoteColor { NoteColor.named(note.colorName) }
     private var primaryColor: Color { color.isDark ? .white : Color.black.opacity(0.82) }
@@ -339,8 +338,7 @@ struct NoteCardView: View {
             RoundedRectangle(cornerRadius: 10, style: .continuous)
                 .stroke(Color.black.opacity(0.08), lineWidth: 0.5)
         )
-        .shadow(color: .black.opacity(0.2), radius: 6, y: 2)
-        .onReceive(Timer.publish(every: 1, on: .main, in: .common).autoconnect()) { now = $0 }
+        .background(CardShadow(cornerRadius: 10, opacity: 0.2, radius: 6, y: 2))
     }
 
     // MARK: Header
@@ -354,9 +352,7 @@ struct NoteCardView: View {
                 .font(.system(size: 14, weight: .semibold))
                 .lineLimit(1)
             Spacer(minLength: 4)
-            Text("已保存 · \(relativeTimeString(from: note.modifiedAt, to: now))")
-                .font(.system(size: 11))
-                .foregroundColor(secondaryColor)
+            SavedAtLabel(modifiedAt: note.modifiedAt, color: secondaryColor)
             Button(action: archiveNote) {
                 Image(systemName: "tray.and.arrow.down")
                     .font(.system(size: 12))
@@ -497,6 +493,51 @@ struct NoteCardView: View {
         .padding(.horizontal, 10)
         .padding(.vertical, 6)
         .background(.thinMaterial)
+    }
+}
+
+/// 每秒刷新只重绘这一行文字，不带动整张卡片和编辑器。
+private struct SavedAtLabel: View {
+    let modifiedAt: Date
+    let color: Color
+
+    var body: some View {
+        TimelineView(.periodic(from: Date(), by: 1)) { context in
+            Text("已保存 · \(relativeTimeString(from: modifiedAt, to: context.date))")
+                .font(.system(size: 11))
+                .foregroundColor(color)
+        }
+    }
+}
+
+/// 卡片外侧投影。投影取自固定形状，内部被挖空；正文滚动或输入时不用按内容重算阴影。
+struct CardShadow: View {
+    let cornerRadius: CGFloat
+    let opacity: Double
+    let radius: CGFloat
+    let y: CGFloat
+
+    var body: some View {
+        let spread = radius * 2 + abs(y)
+        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+            .fill(Color.black)
+            .shadow(color: .black.opacity(opacity), radius: radius, y: y)
+            .mask(CardOutside(cornerRadius: cornerRadius, inset: spread)
+                .fill(style: FillStyle(eoFill: true))
+                .padding(-spread))
+            .allowsHitTesting(false)
+    }
+}
+
+private struct CardOutside: Shape {
+    let cornerRadius: CGFloat
+    let inset: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path(rect)
+        path.addRoundedRect(in: rect.insetBy(dx: inset, dy: inset),
+                            cornerSize: CGSize(width: cornerRadius, height: cornerRadius), style: .continuous)
+        return path
     }
 }
 

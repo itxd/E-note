@@ -106,6 +106,8 @@ final class NoteEditorCoordinator: NSObject, EditorKeyRouter, NSTextViewDelegate
     var textView: EditorTextView?
 
     private var saveWork: DispatchWorkItem?
+    /// 本轮输入改动的范围(改动后坐标)，只重排它们所在段落的任务样式。
+    private var pendingEdits: [NSRange] = []
     private var matches: [NSRange] = []
     private var applyingExternalBody = false
     private var hasUnsavedChanges = false
@@ -146,13 +148,15 @@ final class NoteEditorCoordinator: NSObject, EditorKeyRouter, NSTextViewDelegate
 
     private func updateTaskEditState() {
         let state = TaskEditState.shared
+        // 值不变时不赋值：每次赋值都会让整张卡片重算，打字时尤其明显。
         guard let tv = textView, tv.window?.firstResponder === tv else {
             if state.activeNoteID == noteID { state.activeNoteID = nil }
-            state.caretOnTaskLine = false
+            if state.caretOnTaskLine { state.caretOnTaskLine = false }
             return
         }
-        state.activeNoteID = noteID
-        state.caretOnTaskLine = currentTaskLine() != nil
+        if state.activeNoteID != noteID { state.activeNoteID = noteID }
+        let onTaskLine = currentTaskLine() != nil
+        if state.caretOnTaskLine != onTaskLine { state.caretOnTaskLine = onTaskLine }
     }
 
     /// 光标所在的任务行文本(非任务行返回 nil)
@@ -180,11 +184,20 @@ final class NoteEditorCoordinator: NSObject, EditorKeyRouter, NSTextViewDelegate
         refreshTaskStyles()
     }
 
-    // MARK: 自动保存(250ms 防抖)
+    // MARK: 自动保存(防抖)
+
+    func textView(_ textView: NSTextView, shouldChangeTextIn affectedCharRange: NSRange,
+                  replacementString: String?) -> Bool {
+        let length = (replacementString as NSString?)?.length ?? 0
+        pendingEdits.append(NSRange(location: affectedCharRange.location, length: length))
+        return true
+    }
 
     func textDidChange(_ notification: Notification) {
         guard let tv = notification.object as? NSTextView, tv === textView else { return }
-        refreshTaskStyles()
+        // 普通输入只改一处；一轮出现多处改动时位置会相互偏移，退回全文重排。
+        refreshTaskStyles(in: pendingEdits.count == 1 ? pendingEdits[0] : nil)
+        pendingEdits.removeAll()
         scheduleSave()
         updateTaskEditState()
     }
@@ -194,12 +207,15 @@ final class NoteEditorCoordinator: NSObject, EditorKeyRouter, NSTextViewDelegate
         updateTaskEditState()
     }
 
+    /// 停止输入后再写盘：每次写盘都要加密、整文件落盘并刷新 deck，连续打字时不宜太频繁。
+    private static let saveDelay: TimeInterval = 0.8
+
     func scheduleSave() {
         hasUnsavedChanges = true
         saveWork?.cancel()
         let work = DispatchWorkItem { [weak self] in self?.saveNow() }
         saveWork = work
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.25, execute: work)
+        DispatchQueue.main.asyncAfter(deadline: .now() + Self.saveDelay, execute: work)
     }
 
     func saveNow() {
@@ -362,9 +378,15 @@ final class NoteEditorCoordinator: NSObject, EditorKeyRouter, NSTextViewDelegate
     }
 
     /// 已完成任务:划掉 + 变暗;到期标记:次要色小字(temporary attributes)
-    func refreshTaskStyles() {
+    /// edited 为本次输入改动的范围:只重排它所在的段落;nil 时全文重排。
+    func refreshTaskStyles(in edited: NSRange? = nil) {
         guard let tv = textView, let layoutManager = tv.layoutManager else { return }
-        let full = NSRange(location: 0, length: (tv.string as NSString).length)
+        let ns = tv.string as NSString
+        var full = NSRange(location: 0, length: ns.length)
+        if let edited = edited, edited.location <= ns.length {
+            let length = min(edited.length, ns.length - edited.location)
+            full = ns.paragraphRange(for: NSRange(location: edited.location, length: length))
+        }
         layoutManager.removeTemporaryAttribute(.strikethroughStyle, forCharacterRange: full)
         layoutManager.removeTemporaryAttribute(.foregroundColor, forCharacterRange: full)
         layoutManager.removeTemporaryAttribute(.font, forCharacterRange: full)
@@ -374,7 +396,6 @@ final class NoteEditorCoordinator: NSObject, EditorKeyRouter, NSTextViewDelegate
         let dueColor = baseColor.withAlphaComponent(0.45)
         let baseFont = tv.font ?? NSFont.systemFont(ofSize: 13)
         let dueFont = NSFontManager.shared.convert(baseFont, toSize: max(baseFont.pointSize - 2, 9))
-        let ns = tv.string as NSString
         ns.enumerateSubstrings(in: full, options: .byLines) { substring, range, _, _ in
             guard let line = substring, TaskSyntax.isTask(line) else { return }
             var rangeToStyle = range

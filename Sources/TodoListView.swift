@@ -365,11 +365,12 @@ struct TodoComposer: View {
         .padding(.leading, 12)
         .padding(.trailing, 7)
         .frame(height: 40)
-        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(TodoTheme.cardHover))
+        // 阴影只挂在底板形状上：挂在整行会随输入框每次重绘重新计算。
+        .background(RoundedRectangle(cornerRadius: 14, style: .continuous).fill(TodoTheme.cardHover)
+            .shadow(color: TodoTheme.accentAlt.opacity(composing ? 0.2 : 0.06), radius: composing ? 14 : 6, y: 4))
         .overlay(RoundedRectangle(cornerRadius: 14, style: .continuous)
             .strokeBorder(TodoTheme.auroraStroke, lineWidth: composing ? 1.2 : 0.8)
             .opacity(composing ? 0.9 : 0.35))
-        .shadow(color: TodoTheme.accentAlt.opacity(composing ? 0.2 : 0.06), radius: composing ? 14 : 6, y: 4)
         .animation(.easeOut(duration: 0.2), value: composing)
         .animation(.spring(response: 0.28, dampingFraction: 0.8), value: isEmpty)
         .padding(.horizontal, 12)
@@ -442,7 +443,8 @@ struct TodoRow: View {
         .padding(.trailing, 6)
         .padding(.vertical, 7)
         .background(RoundedRectangle(cornerRadius: 11, style: .continuous)
-            .fill(hovering ? TodoTheme.cardHover : TodoTheme.card))
+            .fill(hovering ? TodoTheme.cardHover : TodoTheme.card)
+            .shadow(color: TodoTheme.accent.opacity(hovering ? 0.12 : 0), radius: hovering ? 8 : 0, y: 2))
         .overlay(alignment: .leading) {
             if let marker = marker {
                 Capsule().fill(marker).frame(width: 2.5).padding(.vertical, 10).padding(.leading, 2.5)
@@ -451,7 +453,6 @@ struct TodoRow: View {
         .overlay(RoundedRectangle(cornerRadius: 11, style: .continuous)
             .strokeBorder(hovering ? AnyShapeStyle(TodoTheme.accent.opacity(0.3)) : AnyShapeStyle(TodoTheme.cardStroke),
                           lineWidth: 0.8))
-        .shadow(color: TodoTheme.accent.opacity(hovering ? 0.12 : 0), radius: hovering ? 8 : 0, y: 2)
         .animation(.easeOut(duration: 0.15), value: hovering)
         .onHover { hovering = $0 }
         .confirmationDialog("删除 \(item.code)？", isPresented: $confirmingDelete) {
@@ -596,20 +597,22 @@ struct TodoRow: View {
         }.buttonStyle(.plain).foregroundColor(tint ?? .secondary).help(help)
     }
 
+    /// 不用横向 ScrollView：每行一个嵌套滚动视图会让列表滚动掉帧。放不下的标签在右侧截断。
     private var tagStrip: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 4) {
-                ForEach(tags) { tag in
-                    Button { inspectingTag = tag } label: {
-                        Text("#\(tag.name)").font(.system(size: 10, weight: .medium))
-                            .foregroundColor(TodoTheme.accent)
-                            .padding(.horizontal, 6).padding(.vertical, 2)
-                            .background(Capsule().fill(TodoTheme.accent.opacity(0.09)))
-                            .contentShape(Capsule())
-                    }.buttonStyle(.plain)
-                }
+        HStack(spacing: 4) {
+            ForEach(tags) { tag in
+                Button { inspectingTag = tag } label: {
+                    Text("#\(tag.name)").font(.system(size: 10, weight: .medium))
+                        .foregroundColor(TodoTheme.accent)
+                        .lineLimit(1).fixedSize()
+                        .padding(.horizontal, 6).padding(.vertical, 2)
+                        .background(Capsule().fill(TodoTheme.accent.opacity(0.09)))
+                        .contentShape(Capsule())
+                }.buttonStyle(.plain).help("#\(tag.name)")
             }
         }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .clipped()
         .popover(item: $inspectingTag) { tag in TagInfoView(tagID: tag.id) }
     }
 }
