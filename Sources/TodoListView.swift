@@ -49,8 +49,10 @@ struct TodoListView: View {
 
     var body: some View {
         let snapshot = TodoSnapshot(store: store, tagID: selectedTagID, age: age)
+        // 「全部」里未完成的排在前面，各自保持原有顺序。
         let filtered = filter == 3 ? snapshot.archived
-            : snapshot.items.filter { filter == 0 || (filter == 1 ? !$0.completed : $0.completed) }
+            : filter == 0 ? snapshot.items.filter { !$0.completed } + snapshot.items.filter { $0.completed }
+            : snapshot.items.filter { $0.completed == (filter == 2) }
         VStack(spacing: 0) {
             heading(snapshot)
             HStack(spacing: 6) {
